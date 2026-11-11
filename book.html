@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Библиотека и Читалка — Mirror-info</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/modernizr/2.8.3/modernizr.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/turn.js/3/turn.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            /* Фисташково-бежевая пастельная тема (как у транслятора) */
+            --bg-app: radial-gradient(circle at center, #e8efe6 0%, #f3eee6 55%, #f9f6f1 100%);
+            --page-bg: #fffcf7;
+            --page-text: #3a3630;
+            --page-border: #e6dfd4;
+            --page-heading: #3a3630;
+            --page-muted: #7a7368;
+            --accent: #8ba888;
+            --accent-soft: #eef4ec;
+            --toolbar-bg: rgba(255, 252, 247, 0.85);
+            --toolbar-border: #e6dfd4;
+            --toolbar-text: #3a3630;
+            --panel-bg: #fffcf7;
+            --panel-text: #3a3630;
+            --font-reader: 'Georgia', 'Lora', serif;
+            --reader-size: 15px;
+            --reader-line: 1.6;
+        }
+
+        body.theme-sepia {
+            --bg-app: radial-gradient(circle at center, #ebe3d4 0%, #f4ecd8 100%);
+            --page-bg: #f4ecd8;
+            --page-text: #3b2f23;
+            --page-border: #dcd0b6;
+            --page-heading: #2b2117;
+            --page-muted: #7a6855;
+            --accent: #b8956a;
+            --accent-soft: #f5ebe0;
+            --toolbar-bg: rgba(244, 236, 216, 0.9);
+            --toolbar-border: #dcd0b6;
+            --toolbar-text: #3b2f23;
+            --panel-bg: #f4ecd8;
+            --panel-text: #3b2f23;
+        }
+
+        body.theme-night {
+            --bg-app: radial-gradient(circle at center, #1a1f18 0%, #121510 100%);
+            --page-bg: #1e241c;
+            --page-text: #d4dccf;
+            --page-border: #2f3830;
+            --page-heading: #eef4ec;
+            --page-muted: #8a9684;
+            --accent: #8ba888;
+            --accent-soft: #2a3328;
+            --toolbar-bg: rgba(30, 36, 28, 0.92);
+            --toolbar-border: #2f3830;
+            --toolbar-text: #d4dccf;
+            --panel-bg: #1e241c;
+            --panel-text: #d4dccf;
+        }
+
+        body.theme-mint {
+            --bg-app: radial-gradient(circle at center, #dfece0 0%, #eef5f0 100%);
+            --page-bg: #eef5f0;
+            --page-text: #1e3329;
+            --page-border: #cde0d4;
+            --page-heading: #12241b;
+            --page-muted: #5c7a6b;
+            --accent: #6b9b6e;
+            --accent-soft: #e3f0e5;
+            --toolbar-bg: rgba(238, 245, 240, 0.9);
+            --toolbar-border: #cde0d4;
+            --toolbar-text: #1e3329;
+            --panel-bg: #eef5f0;
+            --panel-text: #1e3329;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-app);
+            color: var(--page-text);
+            font-family: 'Inter', system-ui, sans-serif;
+            overflow-x: hidden;
+            padding: 12px;
+            transition: background 0.3s ease;
+        }
+
+        /* Верхняя панель инструментов */
+        .toolbar {
+            width: 100%;
+            max-width: 1100px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: var(--toolbar-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--toolbar-border);
+            padding: 8px 14px;
+            border-radius: 16px;
+            z-index: 30;
+            box-shadow: 0 4px 20px rgba(58, 54, 48, 0.06);
+        }
+
+        .t-btn {
+            background: var(--accent-soft);
+            color: var(--toolbar-text);
+            border: 1px solid var(--toolbar-border);
+            padding: 6px 12px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.18s;
+        }
+
+        .t-btn:hover, .t-btn.is-active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .t-btn--primary {
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+            border-color: var(--accent);
+        }
+
+        .t-btn--primary:hover {
+            background: #759473;
+            color: #fff;
+        }
+
+        /* Модальные окна и выдвижные панели */
+        .drawer-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 90;
+            display: none;
+        }
+        .drawer-overlay.is-open { display: block; }
+
+        .side-drawer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 340px;
+            max-width: 90vw;
+            background: var(--panel-bg);
+            color: var(--panel-text);
+            padding: 20px;
+            box-shadow: 10px 0 30px rgba(58, 54, 48, 0.15);
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            border-right: 1px solid var(--page-border);
+        }
+        .side-drawer.is-open { transform: translateX(0); }
+
+        .modal-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 480px;
+            max-width: 94vw;
+            max-height: 88vh;
+            overflow-y: auto;
+            background: var(--panel-bg);
+            color: var(--panel-text);
+            border: 1px solid var(--page-border);
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: 0 25px 60px rgba(58, 54, 48, 0.18);
+            z-index: 110;
+            display: none;
+        }
+        .modal-box.is-open { display: block; }
+
+        .panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--page-border);
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+
+        .close-x {
+            background: none;
+            border: none;
+            color: var(--page-muted);
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .close-x:hover { color: var(--page-text); }
+
+        /* Книжная полка (Библиотека) */
+        .shelf-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+            gap: 14px;
+            margin-top: 14px;
+        }
+
+        .book-card {
+            background: linear-gradient(145deg, #eef4ec, #f3eee6);
+            border: 1px solid var(--page-border);
+            border-radius: 8px 12px 12px 8px;
+            padding: 14px 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 175px;
+            cursor: pointer;
+            position: relative;
+            box-shadow: 0 4px 14px rgba(58,54,48,0.08);
+            transition: transform 0.2s;
+        }
+        .book-card:hover { transform: translateY(-4px); border-color: var(--accent); }
+        .book-card.is-current { border: 2px solid var(--accent); }
+
+        .book-card__title {
+            font-family: 'Georgia', serif;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--page-heading);
+            line-height: 1.3;
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .book-card__author {
+            font-size: 11px;
+            color: var(--accent);
+            margin-top: 6px;
+        }
+        .book-card__del {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: rgba(0,0,0,0.5);
+            color: #f87171;
+            border: none;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        /* Настройки */
+        .setting-group { margin-bottom: 16px; }
+        .setting-label { display: block; font-size: 12px; color: var(--page-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .theme-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+        .theme-pill {
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .theme-pill.is-active { border-color: var(--accent); }
+
+        /* Списки оглавления и закладок */
+        .nav-list { list-style: none; padding: 0; margin: 0; }
+        .nav-list li {
+            padding: 10px;
+            border-bottom: 1px solid var(--page-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            border-radius: 6px;
+        }
+        .nav-list li:hover { background: var(--accent-soft); color: var(--accent); }
+
+        /* Область книги */
+        .book-viewport {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: auto;
+            padding: 10px 0;
+        }
+
+        #flipbook {
+            width: 840px;
+            height: 550px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+        }
+
+        #flipbook .page {
+            width: 420px;
+            height: 550px;
+            background-color: var(--page-bg);
+            color: var(--page-text);
+            font-family: var(--font-reader);
+            padding: 36px 32px 22px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border: 1px solid var(--page-border);
+            user-select: none;
+            overflow: hidden;
+            transition: background-color 0.25s, color 0.25s;
+        }
+
+        #flipbook .even { box-shadow: inset -12px 0 20px -10px rgba(0, 0, 0, 0.14); }
+        #flipbook .odd { box-shadow: inset 12px 0 20px -10px rgba(0, 0, 0, 0.14); }
+
+        /* Текстура бумаги (опционально) */
+        body.paper-lines #flipbook .page {
+            background-image: repeating-linear-gradient(transparent, transparent 27px, rgba(130, 115, 90, 0.12) 28px);
+        }
+
+        #flipbook .hard {
+            background: linear-gradient(135deg, #8ba888 0%, #6b8568 100%) !important;
+            color: #fffcf7;
+            border: 2px solid #759473;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .cover-frame {
+            border: 2px solid rgba(255,252,247,0.55);
+            padding: 28px 20px;
+            width: 85%;
+            height: 85%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .cover-title { font-size: 24px; margin: 14px 0; text-transform: uppercase; color: #fffcf7; line-height: 1.3; }
+        .cover-author { font-size: 15px; font-style: italic; color: #eef4ec; }
+
+        .page-content { flex: 1; overflow: hidden; }
+        .page-content h2 {
+            font-size: calc(var(--reader-size) + 4px);
+            margin: 0 0 12px;
+            border-bottom: 1px solid var(--page-border);
+            padding-bottom: 6px;
+            color: var(--page-heading);
+        }
+        .page-content p {
+            font-size: var(--reader-size);
+            line-height: var(--reader-line);
+            text-align: justify;
+            text-indent: 1.4em;
+            margin: 0 0 10px;
+        }
+
+        .page-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11.5px;
+            color: var(--page-muted);
+            border-top: 1px solid var(--page-border);
+            padding-top: 6px;
+            margin-top: 8px;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Нижняя панель управления */
+        .bottom-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background: var(--toolbar-bg);
+            border: 1px solid var(--toolbar-border);
+            padding: 8px 16px;
+            border-radius: 30px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(58,54,48,0.06);
+        }
+
+        .page-indicator {
+            color: var(--toolbar-text);
+            font-size: 13px;
+            min-width: 115px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .site-footer {
+            width: 100%;
+            max-width: 1100px;
+            margin-top: 10px;
+            padding: 10px 14px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--page-muted);
+        }
+        .site-footer a {
+            color: var(--accent);
+            text-decoration: none;
+            margin: 0 6px;
+        }
+        .site-footer a:hover { text-decoration: underline; }
+
+        .font-size-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            padding: 0 6px;
+            border-radius: 8px;
+            background: var(--accent-soft);
+            border: 1px solid var(--toolbar-border);
+            color: var(--toolbar-text);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+
+        .progress-wrap {
+            width: 100%;
+            max-width: 840px;
+            margin: 6px auto 0;
+            position: relative;
+            height: 18px;
+        }
+        .progress-bar {
+            height: 6px;
+            width: 0%;
+            border-radius: 999px;
+            background: var(--accent);
+            transition: width 0.25s ease;
+            margin-top: 6px;
+        }
+        .progress-text {
+            position: absolute;
+            right: 0; top: -2px;
+            font-size: 11px;
+            color: var(--page-muted);
+            font-weight: 600;
+        }
+        .timer-toast {
+            position: fixed;
+            bottom: 18px;
+            right: 18px;
+            background: var(--panel-bg);
+            color: var(--panel-text);
+            border: 1px solid var(--page-border);
+            border-radius: 12px;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 8px 24px rgba(58,54,48,0.12);
+            z-index: 120;
+        }
+        body.is-fullscreen .toolbar,
+        body.is-fullscreen .site-footer {
+            opacity: 0.15;
+            transition: opacity 0.2s;
+        }
+        body.is-fullscreen .toolbar:hover,
+        body.is-fullscreen .site-footer:hover {
+            opacity: 1;
+        }
+
+
+        .menu-links { display: flex; flex-direction: column; gap: 8px; }
+        .menu-link {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 14px; border-radius: 12px;
+            background: var(--accent-soft); color: var(--panel-text);
+            text-decoration: none; font-size: 14px; font-weight: 500;
+            border: 1px solid var(--page-border); transition: all 0.15s;
+        }
+        .menu-link:hover { border-color: var(--accent); color: var(--accent); }
+        .share-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+        }
+        .share-btn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 12px 10px; border-radius: 12px; cursor: pointer;
+            background: var(--accent-soft); color: var(--panel-text);
+            border: 1px solid var(--page-border); font-size: 13px; font-weight: 600;
+            transition: all 0.15s;
+        }
+        .share-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+        @media (max-width: 480px) {
+            .share-grid { grid-template-columns: 1fr; }
+        }
+
+
+        @media (max-width: 860px) {
+            #flipbook { width: 340px; height: 490px; }
+            #flipbook .page { width: 340px; height: 490px; padding: 22px 18px 16px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Верхняя панель инструментов -->
+    <header class="toolbar">
+        <button type="button" class="t-btn" id="btnMenu"><i class="fa-solid fa-bars"></i> Меню</button>
+        <button type="button" class="t-btn t-btn--primary" id="btnShelf"><i class="fa-solid fa-book-bookmark"></i> Книжная полка</button>
+        <button type="button" class="t-btn" id="btnToc"><i class="fa-solid fa-list"></i> Оглавление</button>
+        <button type="button" class="t-btn" id="btnBookmarks"><i class="fa-regular fa-bookmark"></i> Закладки</button>
+        <button type="button" class="t-btn" id="btnAboutBook"><i class="fa-solid fa-circle-info"></i> О книге</button>
+        <button type="button" class="t-btn" id="btnTts"><i class="fa-solid fa-volume-high"></i> <span id="ttsLabel">Читать вслух</span></button>
+        <button type="button" class="t-btn" id="btnFontDec" title="Уменьшить шрифт"><i class="fa-solid fa-minus"></i> А-</button>
+        <span class="font-size-badge" id="fontSizeBadge" title="Текущий размер шрифта">15</span>
+        <button type="button" class="t-btn" id="btnFontInc" title="Увеличить шрифт">А+ <i class="fa-solid fa-plus"></i></button>
+        <button type="button" class="t-btn" id="btnOrientation"><i class="fa-solid fa-book-open"></i> <span id="orientLabel">Разворот</span></button>
+        <button type="button" class="t-btn" id="btnSettings"><i class="fa-solid fa-sliders"></i> Настройки</button>
+        <button type="button" class="t-btn" id="btnDarkTheme" title="Тёмная тема"><i class="fa-solid fa-moon" id="darkThemeIcon"></i> <span id="darkThemeLabel">Тема</span></button>
+        <button type="button" class="t-btn" id="btnFullscreen" title="Полный экран"><i class="fa-solid fa-expand"></i> <span id="fsLabel">Экран</span></button>
+        <button type="button" class="t-btn" id="btnAutoFlip" title="Автоперелистывание"><i class="fa-solid fa-forward"></i> <span id="autoLabel">Авто</span></button>
+        <button type="button" class="t-btn" id="btnNightTimer" title="Ночной таймер"><i class="fa-regular fa-moon"></i> <span id="timerLabel">Таймер</span></button>
+        <button type="button" class="t-btn" id="btnPublish"><i class="fa-solid fa-upload"></i> Опубликовать</button>
+        <button type="button" class="t-btn" id="btnShare"><i class="fa-solid fa-share-nodes"></i> Поделиться</button>
+    </header>
+
+    <div class="drawer-overlay" id="overlay"></div>
+
+    <!-- Выдвижная панель: Оглавление и Закладки -->
+    <aside class="side-drawer" id="sideDrawer">
+        <div class="panel-head">
+            <strong id="drawerTitle" style="font-size: 16px;">Оглавление</strong>
+            <button type="button" class="close-x" id="closeDrawerBtn">✕</button>
+        </div>
+        <div id="bookmarkAddWrap" style="display:none; margin-bottom:12px;">
+            <button type="button" class="t-btn t-btn--primary" style="width:100%; justify-content:center;" id="addBookmarkNowBtn">
+                <i class="fa-solid fa-plus"></i> Добавить текущую страницу в закладки
+            </button>
+        </div>
+        <ul class="nav-list" id="drawerList"></ul>
+    </aside>
+
+    <!-- Модальное окно: Книжная полка (Библиотека) -->
+    <div class="modal-box" id="modalShelf">
+        <div class="panel-head">
+            <strong><i class="fa-solid fa-book-bookmark"></i> Моя книжная полка</strong>
+            <button type="button" class="close-x" data-close-modal>✕</button>
+        </div>
+        <p style="font-size:13px; color:var(--page-muted); margin-top:0;">Загрузите книги: TXT, FB2, MD, EPUB, Word (.docx) и PDF — они сохранятся на полке в браузере.</p>
+        <button type="button" class="t-btn t-btn--primary" style="width:100%; justify-content:center;" id="uploadToShelfBtn">
+            <i class="fa-solid fa-upload"></i> Загрузить книгу на полку
+        </button>
+        <input type="file" id="shelfFileInput" accept=".txt,.fb2,.md,.epub,.docx,.pdf,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" multiple style="display:none;">
+        <div class="shelf-grid" id="shelfGrid"></div>
+    </div>
+
+    <!-- Модальное окно: О книге -->
+    <div class="modal-box" id="modalAbout">
+        <div class="panel-head">
+            <strong><i class="fa-solid fa-circle-info"></i> О книге</strong>
+            <button type="button" class="close-x" data-close-modal>✕</button>
+        </div>
+        <div id="aboutBookContent" style="font-size:14px; line-height:1.6;"></div>
+    </div>
+
+    <!-- Модальное окно: Настройки -->
+    <div class="modal-box" id="modalSettings">
+        <div class="panel-head">
+            <strong><i class="fa-solid fa-sliders"></i> Настройки чтения</strong>
+            <button type="button" class="close-x" data-close-modal>✕</button>
+        </div>
+
+        <div class="setting-group">
+            <span class="setting-label">Тема оформления</span>
+            <div class="theme-pills">
+                <button type="button" class="theme-pill is-active" data-theme="light" style="background:#fdfaf2; color:#2b2620;">Светлая</button>
+                <button type="button" class="theme-pill" data-theme="sepia" style="background:#f4ecd8; color:#3b2f23;">Сепия</button>
+                <button type="button" class="theme-pill" data-theme="mint" style="background:#eef5f0; color:#1e3329;">Мята</button>
+                <button type="button" class="theme-pill" data-theme="night" style="background:#1b2028; color:#f1f5f9;">Ночь</button>
+            </div>
+        </div>
+
+        <div class="setting-group">
+            <span class="setting-label">Оформление страницы</span>
+            <div class="theme-pills">
+                <button type="button" class="t-btn is-active" data-paper="clean">Чистый лист</button>
+                <button type="button" class="t-btn" data-paper="lines">Разлиновка</button>
+            </div>
+        </div>
+
+        <div class="setting-group">
+            <span class="setting-label">Шрифт текста</span>
+            <div class="theme-pills">
+                <button type="button" class="t-btn is-active" data-font="'Georgia', 'Lora', serif">Классический (Georgia)</button>
+                <button type="button" class="t-btn" data-font="'Merriweather', serif">Книжный (Merriweather)</button>
+                <button type="button" class="t-btn" data-font="'Inter', sans-serif">Современный (Sans)</button>
+            </div>
+        </div>
+
+        <div class="setting-group">
+            <span class="setting-label">Дополнительно</span>
+            <button type="button" class="t-btn" id="toggleSoundSetting"><i class="fa-solid fa-music"></i> Звук перелистывания: Вкл</button>
+        </div>
+    </div>
+
+
+    <!-- Модальное окно: Меню -->
+    <div class="modal-box" id="modalMenu">
+        <div class="panel-head">
+            <strong><i class="fa-solid fa-bars"></i> Меню Mirror-info</strong>
+            <button type="button" class="close-x" data-close-modal>✕</button>
+        </div>
+        <div class="menu-links">
+            <a class="menu-link" href="index.html"><i class="fa-solid fa-language"></i> Транслятор файлов</a>
+            <a class="menu-link" href="book.html"><i class="fa-solid fa-book-open"></i> Читалка</a>
+            <a class="menu-link" href="account.html"><i class="fa-solid fa-user"></i> Личный кабинет</a>
+            <a class="menu-link" href="https://mirror-info.forum2x2.ru/" target="_blank" rel="noopener"><i class="fa-solid fa-globe"></i> Сайт Mirror-info</a>
+            <a class="menu-link" href="https://mirror-info.forum2x2.ru/publi" target="_blank" rel="noopener"><i class="fa-solid fa-newspaper"></i> Публикации</a>
+            <a class="menu-link" href="https://pin.it/4e2vPMAMm" target="_blank" rel="noopener"><i class="fa-brands fa-pinterest"></i> Pinterest</a>
+            <a class="menu-link" href="https://github.com/Lina1209?tab=repositories" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> GitHub</a>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Опубликовать -->
+    <div class="modal-box" id="modalPublish">
+        <div class="panel-head">
+            <strong><i class="fa-solid fa-upload"></i> Опубликовать</strong>
+            <button type="button" class="close-x" data-close-modal>✕</button>
+        </div>
+        <p style="font-size:14px; line-height:1.55; margin-top:0;">Вы можете опубликовать материал или поделиться книгой на площадках Mirror-info.</p>
+        <div class="menu-links">
+            <a class="menu-link" href="https://mirror-info.forum2x2.ru/publi" target="_blank" rel="noopener"><i class="fa-solid fa-newspaper"></i> Раздел «Публикации»</a>
+            <a class="menu-link" href="https://mirror-info.forum2x2.ru/" target="_blank" rel="noopener"><i class="fa-solid fa-globe"></i> Сайт Mirror-info</a>
+            <button type="button" class="menu-link" id="publishCopyLinkBtn" style="width:100%; text-align:left; cursor:pointer; background:transparent; border:none; font:inherit; color:inherit;"><i class="fa-solid fa-link"></i> Скопировать ссылку на читалку</button>
+        </div>
+        <p style="font-size:12px; color:var(--page-muted); margin-top:14px;">Подпись: ©Lina_Winter · «©Mirror - info»</p>
+    </div>
+
+    <!-- Модальное окно: Поделиться -->
+    <div class="modal-box" id="modalShare">
+        <div class="panel-head">
+            <strong><i class="fa-solid fa-share-nodes"></i> Поделиться</strong>
+            <button type="button" class="close-x" data-close-modal>✕</button>
+        </div>
+        <p style="font-size:13px; color:var(--page-muted); margin-top:0;" id="shareBookTitle">Текущая книга</p>
+        <div class="share-grid">
+            <button type="button" class="share-btn" data-share="telegram"><i class="fa-brands fa-telegram"></i> Telegram</button>
+            <button type="button" class="share-btn" data-share="vk"><i class="fa-brands fa-vk"></i> ВКонтакте</button>
+            <button type="button" class="share-btn" data-share="whatsapp"><i class="fa-brands fa-whatsapp"></i> WhatsApp</button>
+            <button type="button" class="share-btn" data-share="ok"><i class="fa-brands fa-odnoklassniki"></i> Одноклассники</button>
+            <button type="button" class="share-btn" data-share="copy"><i class="fa-solid fa-link"></i> Копировать ссылку</button>
+            <button type="button" class="share-btn" data-share="native"><i class="fa-solid fa-share"></i> Ещё…</button>
+        </div>
+    </div>
+
+    <!-- Область электронной книги -->
+    <main class="book-viewport" id="bookContainer">
+        <div id="flipbook"></div>
+    </main>
+
+    <!-- Нижняя панель навигации -->
+    <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar" id="progressBar"></div>
+        <span class="progress-text" id="progressText">0% прочитано</span>
+    </div>
+    <footer class="bottom-controls">
+        <button type="button" class="t-btn t-btn--primary" id="prevBtn"><i class="fa-solid fa-chevron-left"></i> Назад</button>
+        <span class="page-indicator" id="pageIndicator">Обложка</span>
+        <button type="button" class="t-btn t-btn--primary" id="nextBtn">Вперёд <i class="fa-solid fa-chevron-right"></i></button>
+    </footer>
+    <div class="timer-toast" id="timerToast" hidden>Таймер: <span id="timerRemain">15:00</span></div>
+
+    <script>
+        $(document).ready(function () {
+            const SHELF_KEY = 'mirror_reader_shelf_v1';
+            const PREFS_KEY = 'mirror_reader_prefs_v1';
+
+            let prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+            prefs = {
+                theme: prefs.theme || 'light',
+                paper: prefs.paper || 'clean',
+                font: prefs.font || "'Georgia', 'Lora', serif",
+                fontSize: prefs.fontSize || 15,
+                singlePage: prefs.singlePage !== undefined ? prefs.singlePage : (window.innerWidth <= 860),
+                sound: prefs.sound !== undefined ? prefs.sound : true
+            };
+
+            const defaultBooks = [
+                {
+                    id: 'book_mirror_welcome',
+                    title: 'Хроники цифровых страниц',
+                    author: 'Lina_Winter · Mirror-info',
+                    description: 'Интерактивное демонстрационное издание библиотеки Mirror-info. Поддерживает TXT, FB2, EPUB, Word (DOCX), PDF, голосовое чтение, закладки и настройку оформления страниц.',
+                    chapters: [
+                        {
+                            heading: 'Глава I. Ваша личная книжная полка',
+                            paragraphs: [
+                                'Добро пожаловать в обновлённую читалку проекта Mirror-info. Нажмите кнопку «Книжная полка» вверху, чтобы загрузить книги в форматах TXT, FB2, EPUB, Word (DOCX) и PDF — они автоматически сохранятся в вашей библиотеке.',
+                                'Вы можете переключать цветовые темы (Светлая, Сепия, Мята, Ночь), менять размер и гарнитуру шрифта, а также выбирать оформление страницы — чистый лист или книжную разлиновку.',
+                                'Если вы читаете на телефоне или хотите видеть одну крупную страницу вместо разворота, нажмите кнопку «Разворот / 1 стр.» для смены ориентации.'
+                            ]
+                        },
+                        {
+                            heading: 'Глава II. Чтение вслух и закладки',
+                            paragraphs: [
+                                'В верхней панели доступна функция «Читать вслух» — браузер озвучит текст текущей открытой страницы приятным голосом.',
+                                'Ставьте закладки на любимых моментах через меню «Закладки», делитесь ссылкой на книгу с друзьями и наслаждайтесь реалистичным перелистыванием страниц.'
+                            ]
+                        }
+                    ]
+                }
+            ];
+
+            function getShelf() {
+                const saved = JSON.parse(localStorage.getItem(SHELF_KEY) || 'null');
+                return (saved && saved.length) ? saved : defaultBooks;
+            }
+
+            function saveShelf(books) {
+                localStorage.setItem(SHELF_KEY, JSON.stringify(books));
+            }
+
+            let shelf = getShelf();
+            let currentBook = shelf[0] || defaultBooks[0];
+            let isSpeaking = false;
+
+            function savePrefs() {
+                localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+                applyPrefs();
+            }
+
+            function applyPrefs() {
+                document.body.className = '';
+                if (prefs.theme !== 'light') document.body.classList.add('theme-' + prefs.theme);
+                if (prefs.paper === 'lines') document.body.classList.add('paper-lines');
+
+                document.documentElement.style.setProperty('--font-reader', prefs.font);
+                document.documentElement.style.setProperty('--reader-size', prefs.fontSize + 'px');
+                $('#fontSizeBadge').text(prefs.fontSize);
+                $('#orientLabel').text(prefs.singlePage ? '1 страница' : 'Разворот');
+                $('#toggleSoundSetting').html(`<i class="fa-solid fa-music"></i> Звук перелистывания: ${prefs.sound ? 'Вкл' : 'Выкл'}`);
+
+                const isDark = prefs.theme === 'night';
+                $('#darkThemeLabel').text(isDark ? 'Светлая' : 'Тёмная');
+                $('#darkThemeIcon').attr('class', isDark ? 'fa-solid fa-sun' : 'fa-solid fa-moon');
+                $('#btnDarkTheme').toggleClass('is-active', isDark);
+
+                $('.theme-pill').removeClass('is-active');
+                $(`.theme-pill[data-theme="${prefs.theme}"]`).addClass('is-active');
+            }
+
+            function playPageSound() {
+                if (!prefs.sound) return;
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    const ctx = new AudioCtx();
+                    const bufSize = ctx.sampleRate * 0.12;
+                    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+                    const data = buf.getChannelData(0);
+                    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.035));
+                    const src = ctx.createBufferSource();
+                    src.buffer = buf;
+                    const filter = ctx.createBiquadFilter();
+                    filter.type = 'bandpass'; filter.frequency.value = 1100;
+                    const gain = ctx.createGain(); gain.gain.value = 0.1;
+                    src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+                    src.start();
+                } catch (e) {}
+            }
+
+            function escapeHtml(str) {
+                return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function paginateBook(bookData) {
+                const pages = [];
+                const toc = [];
+                const baseChars = prefs.singlePage ? 720 : 880;
+                const scale = 15 / prefs.fontSize;
+                const charsLimit = Math.max(320, Math.round(baseChars * scale));
+
+                bookData.chapters.forEach(ch => {
+                    let html = `<h2>${escapeHtml(ch.heading)}</h2>`;
+                    let len = ch.heading.length * 2;
+                    toc.push({ title: ch.heading, page: pages.length + 3 });
+
+                    ch.paragraphs.forEach(p => {
+                        const txt = p.trim();
+                        if (!txt) return;
+                        if (len + txt.length > charsLimit && len > 80) {
+                            pages.push(html);
+                            html = '';
+                            len = 0;
+                        }
+                        html += `<p>${escapeHtml(txt)}</p>`;
+                        len += txt.length;
+                    });
+                    if (html) pages.push(html);
+                });
+
+                if (pages.length % 2 !== 0) {
+                    pages.push('<p style="text-align:center;opacity:0.5;margin-top:45%;">* * *</p>');
+                }
+                return { pages, toc };
+            }
+
+            function renderBook(bookData, targetPage = null) {
+                stopSpeech();
+                currentBook = bookData;
+                const { pages, toc } = paginateBook(bookData);
+
+                $('#bookContainer').html('<div id="flipbook"></div>');
+                const $fb = $('#flipbook');
+
+                $fb.append(`
+                    <div class="hard">
+                        <div class="cover-frame">
+                            <div class="cover-author">${escapeHtml(bookData.author)}</div>
+                            <h1 class="cover-title">${escapeHtml(bookData.title)}</h1>
+                            <p style="font-size:12px;color:rgba(255,252,247,0.75);margin-top:auto;">Mirror-info Library</p>
+                        </div>
+                    </div>
+                    <div class="hard" style="background:#759473 !important;"><p style="font-style:italic;font-size:13px;opacity:0.7;">Экслибрис</p></div>
+                `);
+
+                pages.forEach((content, idx) => {
+                    $fb.append(`
+                        <div class="page">
+                            <div class="page-content">${content}</div>
+                            <div class="page-footer"><span>${escapeHtml(bookData.title.slice(0, 24))}</span><span>— ${idx + 1} —</span></div>
+                        </div>
+                    `);
+                });
+
+                $fb.append(`
+                    <div class="hard" style="background:#759473 !important;"></div>
+                    <div class="hard">
+                        <div class="cover-frame">
+                            <p style="font-size:16px;">Конец книги</p>
+                            <span class="cover-author" style="margin-top:12px;">©Lina_Winter · Mirror-info</span>
+                        </div>
+                    </div>
+                `);
+
+                currentBook._toc = toc;
+
+                const isMobile = window.innerWidth <= 860;
+                const displayMode = (isMobile || prefs.singlePage) ? 'single' : 'double';
+                const w = displayMode === 'single' ? Math.min(440, window.innerWidth - 28) : 840;
+                const h = isMobile ? 490 : 550;
+
+                $fb.turn({
+                    width: w,
+                    height: h,
+                    autoCenter: true,
+                    display: displayMode,
+                    acceleration: true,
+                    gradients: true,
+                    elevation: 50,
+                    when: {
+                        turning: () => { stopSpeech(); playPageSound(); },
+                        turned: (e, page) => {
+                            const total = $fb.turn('pages');
+                            const ind = document.getElementById('pageIndicator');
+                            if (page === 1) ind.textContent = 'Обложка';
+                            else if (page === total) ind.textContent = 'Конец книги';
+                            else ind.textContent = `Стр. ${page - 2} из ${total - 4}`;
+                            localStorage.setItem('last_page_' + bookData.id, String(page));
+                        }
+                    }
+                });
+
+                const savedPage = targetPage || parseInt(localStorage.getItem('last_page_' + bookData.id) || '1', 10);
+                if (savedPage > 1 && savedPage <= $fb.turn('pages')) {
+                    $fb.turn('page', savedPage);
+                }
+            }
+
+            // --- Озвучка текста (Читать вслух) ---
+            function stopSpeech() {
+                if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+                isSpeaking = false;
+                $('#ttsLabel').text('Читать вслух');
+                $('#btnTts').removeClass('is-active');
+            }
+
+            $('#btnTts').on('click', () => {
+                if (!('speechSynthesis' in window)) return alert('Ваш браузер не поддерживает озвучку текста.');
+                if (isSpeaking) {
+                    stopSpeech();
+                    return;
+                }
+                const currentPageNum = $('#flipbook').turn('page');
+                const pageEl = $(`#flipbook .p${currentPageNum} .page-content`);
+                const textToRead = pageEl.text().trim();
+                if (!textToRead) return alert('Откройте текстовую страницу книги для чтения вслух.');
+
+                const utterance = new SpeechSynthesisUtterance(textToRead);
+                utterance.lang = 'ru-RU';
+                utterance.onend = () => stopSpeech();
+                isSpeaking = true;
+                $('#ttsLabel').text('Остановить');
+                $('#btnTts').addClass('is-active');
+                window.speechSynthesis.speak(utterance);
+            });
+
+            // --- Книжная полка ---
+            function renderShelf() {
+                const $grid = $('#shelfGrid').empty();
+                shelf.forEach(book => {
+                    const isCurr = book.id === currentBook.id;
+                    const delBtn = book.id !== 'book_mirror_welcome'
+                        ? `<button type="button" class="book-card__del" data-del-book="${book.id}" title="Удалить с полки">✕</button>`
+                        : '';
+                    $grid.append(`
+                        <div class="book-card ${isCurr ? 'is-current' : ''}" data-open-book="${book.id}">
+                            ${delBtn}
+                            <div class="book-card__title">${escapeHtml(book.title)}</div>
+                            <div class="book-card__author">${escapeHtml(book.author)}</div>
+                        </div>
+                    `);
+                });
+            }
+
+            $('#shelfGrid').on('click', '[data-open-book]', function (e) {
+                if ($(e.target).is('[data-del-book]')) return;
+                const book = shelf.find(b => b.id === $(this).data('open-book'));
+                if (book) {
+                    renderBook(book);
+                    closeAllPanels();
+                }
+            });
+
+            $('#shelfGrid').on('click', '[data-del-book]', function (e) {
+                e.stopPropagation();
+                const id = $(this).data('del-book');
+                shelf = shelf.filter(b => b.id !== id);
+                saveShelf(shelf);
+                renderShelf();
+            });
+
+            // Загрузка файлов на полку
+            $('#uploadToShelfBtn').on('click', () => $('#shelfFileInput').click());
+            $('#shelfFileInput').on('change', async function (e) {
+                const files = Array.from(e.target.files || []);
+                if (!files.length) return;
+                let lastParsed = null;
+                for (const file of files) {
+                    try {
+                        const parsed = await parseAnyFile(file);
+                        parsed.id = 'book_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+                        shelf.unshift(parsed);
+                        lastParsed = parsed;
+                    } catch (err) {
+                        console.error(err);
+                        alert(`Не удалось прочитать файл «${file.name}»: ${err.message || 'ошибка'}`);
+                    }
+                }
+                saveShelf(shelf);
+                renderShelf();
+                if (lastParsed) renderBook(lastParsed, 1);
+                e.target.value = '';
+            });
+
+            async function parseAnyFile(file) {
+                const name = file.name.toLowerCase();
+                if (name.endsWith('.fb2')) {
+                    return parseFb2(file.name, await file.text());
+                }
+                if (name.endsWith('.epub')) {
+                    return await parseEpub(file);
+                }
+                if (name.endsWith('.docx')) {
+                    return await parseDocx(file);
+                }
+                if (name.endsWith('.pdf')) {
+                    return await parsePdf(file);
+                }
+                // txt, md и прочее
+                return parseTxt(file.name, await file.text());
+            }
+
+            function splitIntoChapters(text, fallbackTitle) {
+                const lines = text.split(/\r?\n/);
+                const chapters = [];
+                let curr = { heading: fallbackTitle || 'Начало', paragraphs: [] };
+                lines.forEach(l => {
+                    const t = l.trim();
+                    if (!t) return;
+                    if (/^(глава|часть|chapter|part|\d+[\.\)])\b/i.test(t) && t.length < 100) {
+                        if (curr.paragraphs.length) chapters.push(curr);
+                        curr = { heading: t, paragraphs: [] };
+                    } else {
+                        curr.paragraphs.push(t);
+                    }
+                });
+                if (curr.paragraphs.length) chapters.push(curr);
+                return chapters.length ? chapters : [{ heading: fallbackTitle || 'Текст', paragraphs: [text] }];
+            }
+
+            function parseTxt(filename, text) {
+                const chapters = splitIntoChapters(text, 'Начало');
+                return {
+                    title: filename.replace(/\.[^.]+$/, ''),
+                    author: 'Загруженная книга',
+                    description: `Книга загружена из файла ${filename}. Объём: ${text.length.toLocaleString('ru-RU')} символов.`,
+                    chapters
+                };
+            }
+
+            function parseFb2(filename, xml) {
+                const doc = new DOMParser().parseFromString(xml, 'text/xml');
+                const title = doc.querySelector('book-title')?.textContent || filename.replace(/\.fb2$/i, '');
+                const author = `${doc.querySelector('author first-name')?.textContent || ''} ${doc.querySelector('author last-name')?.textContent || ''}`.trim() || 'Автор не указан';
+                const desc = doc.querySelector('annotation')?.textContent.trim() || 'Электронная книга в формате FictionBook (FB2).';
+                const sections = Array.from(doc.querySelectorAll('body > section'));
+                const chapters = sections.length
+                    ? sections.map((s, i) => ({
+                        heading: s.querySelector(':scope > title')?.textContent.trim() || `Глава ${i + 1}`,
+                        paragraphs: Array.from(s.querySelectorAll('p')).map(p => p.textContent.trim()).filter(Boolean)
+                    })).filter(c => c.paragraphs.length)
+                    : [{ heading: title, paragraphs: Array.from(doc.querySelectorAll('body p')).map(p => p.textContent.trim()).filter(Boolean) }];
+                return { title, author, description: desc, chapters };
+            }
+
+            async function parseEpub(file) {
+                if (typeof JSZip === 'undefined') throw new Error('Библиотека JSZip не загружена');
+                const zip = await JSZip.loadAsync(file);
+                // container.xml → путь к OPF
+                let opfPath = 'content.opf';
+                try {
+                    const containerXml = await zip.file('META-INF/container.xml').async('string');
+                    const m = containerXml.match(/full-path=["']([^"']+)["']/);
+                    if (m) opfPath = m[1];
+                } catch (e) {}
+
+                const opfText = await zip.file(opfPath).async('string');
+                const opfDir = opfPath.includes('/') ? opfPath.replace(/\/[^/]+$/, '/') : '';
+                const opfDoc = new DOMParser().parseFromString(opfText, 'text/xml');
+
+                const title = opfDoc.querySelector('title')?.textContent?.trim()
+                    || opfDoc.querySelector('dc\\:title, title')?.textContent?.trim()
+                    || file.name.replace(/\.epub$/i, '');
+                const author = opfDoc.querySelector('creator')?.textContent?.trim()
+                    || opfDoc.querySelector('dc\\:creator, creator')?.textContent?.trim()
+                    || 'Автор не указан';
+
+                // Собираем spine (порядок глав)
+                const idToHref = {};
+                opfDoc.querySelectorAll('manifest item, item').forEach(item => {
+                    const id = item.getAttribute('id');
+                    const href = item.getAttribute('href');
+                    if (id && href) idToHref[id] = href;
+                });
+                const spineIds = Array.from(opfDoc.querySelectorAll('spine itemref, itemref'))
+                    .map(r => r.getAttribute('idref'))
+                    .filter(Boolean);
+
+                const chapters = [];
+                for (let i = 0; i < spineIds.length; i++) {
+                    const href = idToHref[spineIds[i]];
+                    if (!href) continue;
+                    const fullPath = opfDir + href;
+                    const entry = zip.file(fullPath) || zip.file(href);
+                    if (!entry) continue;
+                    const html = await entry.async('string');
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+                    // убираем скрипты и стили
+                    doc.querySelectorAll('script, style, nav').forEach(el => el.remove());
+                    const heading = doc.querySelector('h1, h2, title')?.textContent?.trim() || `Глава ${i + 1}`;
+                    const paragraphs = Array.from(doc.querySelectorAll('p, div'))
+                        .map(el => el.textContent.trim())
+                        .filter(t => t.length > 20);
+                    // если мало p — берём весь текст
+                    if (paragraphs.length < 2) {
+                        const bodyText = (doc.body?.textContent || '').trim();
+                        if (bodyText.length > 50) {
+                            chapters.push({ heading, paragraphs: bodyText.split(/\n+/).map(s => s.trim()).filter(Boolean) });
+                        }
+                    } else {
+                        chapters.push({ heading, paragraphs });
+                    }
+                }
+
+                if (!chapters.length) {
+                    // fallback: все html/xhtml внутри архива
+                    const htmlFiles = Object.keys(zip.files).filter(n => /\.(x?html?)$/i.test(n) && !n.includes('META-INF'));
+                    for (const path of htmlFiles) {
+                        const html = await zip.file(path).async('string');
+                        const doc = new DOMParser().parseFromString(html, 'text/html');
+                        doc.querySelectorAll('script, style').forEach(el => el.remove());
+                        const text = (doc.body?.textContent || '').trim();
+                        if (text.length > 80) {
+                            chapters.push({
+                                heading: path.split('/').pop().replace(/\.[^.]+$/, ''),
+                                paragraphs: text.split(/\n+/).map(s => s.trim()).filter(Boolean)
+                            });
+                        }
+                    }
+                }
+
+                return {
+                    title,
+                    author,
+                    description: `Электронная книга EPUB. Файл: ${file.name}`,
+                    chapters: chapters.length ? chapters : [{ heading: title, paragraphs: ['Не удалось извлечь текст из EPUB.'] }]
+                };
+            }
+
+            async function parseDocx(file) {
+                if (typeof mammoth === 'undefined') throw new Error('Библиотека Mammoth не загружена');
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.extractRawText({ arrayBuffer });
+                const text = (result.value || '').trim();
+                if (!text) throw new Error('В документе Word не найден текст');
+                const chapters = splitIntoChapters(text, 'Документ');
+                return {
+                    title: file.name.replace(/\.docx$/i, ''),
+                    author: 'Документ Word',
+                    description: `Документ Microsoft Word (.docx). Объём: ${text.length.toLocaleString('ru-RU')} символов.`,
+                    chapters
+                };
+            }
+
+            async function parsePdf(file) {
+                if (typeof pdfjsLib === 'undefined') throw new Error('Библиотека PDF.js не загружена');
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const chapters = [];
+                let buffer = [];
+                let pageCount = 0;
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const content = await page.getTextContent();
+                    const pageText = content.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
+                    if (!pageText) continue;
+                    buffer.push(pageText);
+                    pageCount++;
+                    // группируем примерно по 3–4 страницам в «главу»
+                    if (buffer.length >= 3 || i === pdf.numPages) {
+                        chapters.push({
+                            heading: `Страницы ${i - buffer.length + 1}–${i}`,
+                            paragraphs: buffer
+                        });
+                        buffer = [];
+                    }
+                }
+
+                if (!chapters.length) throw new Error('В PDF не найден извлекаемый текст (возможно, это скан без OCR)');
+
+                return {
+                    title: file.name.replace(/\.pdf$/i, ''),
+                    author: 'PDF-документ',
+                    description: `PDF-файл (${pdf.numPages} стр.). Текст извлечён автоматически. Сканы без текстового слоя могут быть пустыми.`,
+                    chapters
+                };
+            }
+
+            // --- Панели и модалки ---
+            function closeAllPanels() {
+                $('#overlay, #sideDrawer, .modal-box').removeClass('is-open');
+            }
+
+            $('#overlay, #closeDrawerBtn, [data-close-modal]').on('click', closeAllPanels);
+
+            $('#btnShelf').on('click', () => { closeAllPanels(); renderShelf(); $('#overlay, #modalShelf').addClass('is-open'); });
+
+            $('#btnAboutBook').on('click', () => {
+                closeAllPanels();
+                const totalChars = currentBook.chapters.reduce((s, c) => s + c.paragraphs.join('').length, 0);
+                $('#aboutBookContent').html(`
+                    <p><strong>Название:</strong> ${escapeHtml(currentBook.title)}</p>
+                    <p><strong>Автор:</strong> ${escapeHtml(currentBook.author)}</p>
+                    <p><strong>Объём текста:</strong> ${totalChars.toLocaleString('ru-RU')} символов</p>
+                    <p><strong>Аннотация:</strong><br>${escapeHtml(currentBook.description || 'Описание отсутствует.')}</p>
+                `);
+                $('#overlay, #modalAbout').addClass('is-open');
+            });
+
+            $('#btnSettings').on('click', () => { closeAllPanels(); $('#overlay, #modalSettings').addClass('is-open'); });
+
+            // Оглавление
+            $('#btnToc').on('click', () => {
+                closeAllPanels();
+                $('#drawerTitle').text('Оглавление');
+                $('#bookmarkAddWrap').hide();
+                const $list = $('#drawerList').empty();
+                $list.append(`<li data-goto="1"><span>Обложка</span><span>стр. 1</span></li>`);
+                (currentBook._toc || []).forEach(item => {
+                    $list.append(`<li data-goto="${item.page}"><span>${escapeHtml(item.title)}</span><span>стр. ${item.page - 2}</span></li>`);
+                });
+                $('#overlay, #sideDrawer').addClass('is-open');
+            });
+
+            // Закладки
+            function renderBookmarksList() {
+                const bmKey = 'bookmarks_' + currentBook.id;
+                const list = JSON.parse(localStorage.getItem(bmKey) || '[]');
+                const $list = $('#drawerList').empty();
+                if (!list.length) {
+                    $list.append('<li style="cursor:default;color:var(--page-muted);">Закладок пока нет</li>');
+                    return;
+                }
+                list.forEach((bm, idx) => {
+                    $list.append(`
+                        <li data-goto="${bm.page}">
+                            <span>🔖 ${escapeHtml(bm.label)}</span>
+                            <button type="button" data-del-bm="${idx}" style="background:none;border:none;color:#f87171;cursor:pointer;">✕</button>
+                        </li>
+                    `);
+                });
+            }
+
+            $('#btnBookmarks').on('click', () => {
+                closeAllPanels();
+                $('#drawerTitle').text('Закладки');
+                $('#bookmarkAddWrap').show();
+                renderBookmarksList();
+                $('#overlay, #sideDrawer').addClass('is-open');
+            });
+
+            $('#addBookmarkNowBtn').on('click', () => {
+                const page = $('#flipbook').turn('page');
+                const bmKey = 'bookmarks_' + currentBook.id;
+                const list = JSON.parse(localStorage.getItem(bmKey) || '[]');
+                const label = page <= 2 ? 'Обложка' : `Страница ${page - 2}`;
+                if (!list.some(b => b.page === page)) {
+                    list.push({ page, label });
+                    localStorage.setItem(bmKey, JSON.stringify(list));
+                }
+                renderBookmarksList();
+            });
+
+            $('#drawerList').on('click', '[data-del-bm]', function (e) {
+                e.stopPropagation();
+                const idx = parseInt($(this).data('del-bm'), 10);
+                const bmKey = 'bookmarks_' + currentBook.id;
+                const list = JSON.parse(localStorage.getItem(bmKey) || '[]');
+                list.splice(idx, 1);
+                localStorage.setItem(bmKey, JSON.stringify(list));
+                renderBookmarksList();
+            });
+
+            $('#drawerList').on('click', 'li[data-goto]', function () {
+                const page = parseInt($(this).data('goto'), 10);
+                $('#flipbook').turn('page', page);
+                closeAllPanels();
+            });
+
+            // Настройки: темы, бумага, шрифт, звук
+            $('.theme-pill[data-theme]').on('click', function () {
+                prefs.theme = $(this).data('theme');
+                savePrefs();
+            });
+
+            $('[data-paper]').on('click', function () {
+                $('[data-paper]').removeClass('is-active');
+                $(this).addClass('is-active');
+                prefs.paper = $(this).data('paper');
+                savePrefs();
+            });
+
+            $('[data-font]').on('click', function () {
+                $('[data-font]').removeClass('is-active');
+                $(this).addClass('is-active');
+                prefs.font = $(this).data('font');
+                savePrefs();
+            });
+
+            $('#toggleSoundSetting').on('click', () => {
+                prefs.sound = !prefs.sound;
+                savePrefs();
+            });
+
+            // Размер шрифта и ориентация
+            $('#btnFontInc').on('click', () => {
+                if (prefs.fontSize < 28) {
+                    prefs.fontSize += 1;
+                    savePrefs();
+                    renderBook(currentBook, $('#flipbook').turn('page'));
+                }
+            });
+
+            $('#btnFontDec').on('click', () => {
+                if (prefs.fontSize > 11) {
+                    prefs.fontSize -= 1;
+                    savePrefs();
+                    renderBook(currentBook, $('#flipbook').turn('page'));
+                }
+            });
+
+            $('#btnOrientation').on('click', () => {
+                prefs.singlePage = !prefs.singlePage;
+                savePrefs();
+                renderBook(currentBook, $('#flipbook').turn('page'));
+            });
+
+            // Меню / Опубликовать / Поделиться
+            function sharePayload() {
+                const title = currentBook?.title || 'Mirror-info Читалка';
+                const text = `Читаю «${title}» в онлайн-библиотеке Mirror-info · ©Lina_Winter`;
+                const url = window.location.href.split('#')[0];
+                return { title, text, url };
+            }
+
+            $('#btnMenu').on('click', () => {
+                closeAllPanels();
+                $('#overlay, #modalMenu').addClass('is-open');
+            });
+
+            $('#btnPublish').on('click', () => {
+                closeAllPanels();
+                $('#overlay, #modalPublish').addClass('is-open');
+            });
+
+            $('#publishCopyLinkBtn').on('click', async () => {
+                const { url } = sharePayload();
+                try {
+                    await navigator.clipboard.writeText(url);
+                    alert('Ссылка на читалку скопирована');
+                } catch (e) {
+                    prompt('Скопируйте ссылку:', url);
+                }
+            });
+
+            $('#btnShare').on('click', () => {
+                closeAllPanels();
+                const { title } = sharePayload();
+                $('#shareBookTitle').text(`«${title}»`);
+                $('#overlay, #modalShare').addClass('is-open');
+            });
+
+            $('[data-share]').on('click', async function () {
+                const type = $(this).data('share');
+                const { title, text, url } = sharePayload();
+                const encodedUrl = encodeURIComponent(url);
+                const encodedText = encodeURIComponent(text);
+
+                if (type === 'telegram') {
+                    window.open(`https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`, '_blank', 'noopener');
+                } else if (type === 'vk') {
+                    window.open(`https://vk.com/share.php?url=${encodedUrl}&title=${encodeURIComponent(title)}&comment=${encodedText}`, '_blank', 'noopener');
+                } else if (type === 'whatsapp') {
+                    window.open(`https://wa.me/?text=${encodedText}%20${encodedUrl}`, '_blank', 'noopener');
+                } else if (type === 'ok') {
+                    window.open(`https://connect.ok.ru/offer?url=${encodedUrl}&title=${encodeURIComponent(title)}`, '_blank', 'noopener');
+                } else if (type === 'copy') {
+                    try {
+                        await navigator.clipboard.writeText(`${text}\n${url}`);
+                        alert('Ссылка скопирована');
+                    } catch (e) {
+                        prompt('Скопируйте ссылку:', url);
+                    }
+                } else if (type === 'native') {
+                    if (navigator.share) {
+                        try { await navigator.share({ title, text, url }); } catch (e) {}
+                    } else {
+                        try {
+                            await navigator.clipboard.writeText(`${text}\n${url}`);
+                            alert('Ссылка скопирована');
+                        } catch (e) {
+                            prompt('Скопируйте ссылку:', url);
+                        }
+                    }
+                }
+            });
+
+            // Навигация
+            $('#prevBtn').on('click', () => $('#flipbook').turn('previous'));
+            $('#nextBtn').on('click', () => $('#flipbook').turn('next'));
+            $(document).on('keydown', e => {
+                if (e.key === 'ArrowLeft') $('#flipbook').turn('previous');
+                if (e.key === 'ArrowRight') $('#flipbook').turn('next');
+            });
+
+
+            // --- Быстрое переключение тёмной темы ---
+            $('#btnDarkTheme').on('click', () => {
+                if (prefs.theme === 'night') {
+                    prefs.theme = prefs._prevTheme || 'light';
+                } else {
+                    prefs._prevTheme = prefs.theme;
+                    prefs.theme = 'night';
+                }
+                savePrefs();
+            });
+
+            // --- Полноэкранный режим ---
+            function isFullscreen() {
+                return !!(document.fullscreenElement || document.webkitFullscreenElement);
+            }
+            function updateFsLabel() {
+                const on = isFullscreen() || document.body.classList.contains('is-fullscreen');
+                $('#fsLabel').text(on ? 'Выйти' : 'Экран');
+                $('#btnFullscreen').toggleClass('is-active', on);
+                document.body.classList.toggle('is-fullscreen', on);
+            }
+            $('#btnFullscreen').on('click', async () => {
+                try {
+                    if (!isFullscreen()) {
+                        const el = document.documentElement;
+                        if (el.requestFullscreen) await el.requestFullscreen();
+                        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+                        document.body.classList.add('is-fullscreen');
+                    } else {
+                        if (document.exitFullscreen) await document.exitFullscreen();
+                        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                        document.body.classList.remove('is-fullscreen');
+                    }
+                } catch (e) {
+                    // fallback: CSS-only fullscreen-ish
+                    document.body.classList.toggle('is-fullscreen');
+                }
+                updateFsLabel();
+            });
+            document.addEventListener('fullscreenchange', updateFsLabel);
+            document.addEventListener('webkitfullscreenchange', updateFsLabel);
+
+            // --- Прогресс прочитанного ---
+            function updateReadProgress(page) {
+                const $fb = $('#flipbook');
+                if (!$fb.length || !$fb.data('turn')) return;
+                const total = $fb.turn('pages');
+                const contentPages = Math.max(1, total - 4); // без обложек
+                let contentIndex = page - 2;
+                if (page <= 2) contentIndex = 0;
+                if (page >= total - 1) contentIndex = contentPages;
+                contentIndex = Math.max(0, Math.min(contentPages, contentIndex));
+                const pct = Math.round((contentIndex / contentPages) * 100);
+                $('#progressBar').css('width', pct + '%');
+                $('#progressText').text(pct + '% прочитано');
+                if (currentBook && currentBook.id) {
+                    localStorage.setItem('progress_' + currentBook.id, String(pct));
+                }
+            }
+
+            // hook into existing turned event by wrapping renderBook? 
+            // We patch turn options after render by re-binding via mutation of pageIndicator updates.
+            const _origRenderBook = renderBook;
+            renderBook = function(bookData, targetPage = null) {
+                stopAutoFlip();
+                _origRenderBook(bookData, targetPage);
+                // re-bind turned after turn init
+                setTimeout(() => {
+                    const $fb = $('#flipbook');
+                    if (!$fb.length) return;
+                    $fb.bind('turned', function(e, page) {
+                        updateReadProgress(page);
+                    });
+                    try { updateReadProgress($fb.turn('page')); } catch (e) {}
+                }, 50);
+            };
+
+            // --- Автоперелистывание ---
+            let autoFlipTimer = null;
+            let autoFlipOn = false;
+            const AUTO_MS = 8000;
+
+            function stopAutoFlip() {
+                autoFlipOn = false;
+                if (autoFlipTimer) { clearInterval(autoFlipTimer); autoFlipTimer = null; }
+                $('#autoLabel').text('Авто');
+                $('#btnAutoFlip').removeClass('is-active');
+            }
+            function startAutoFlip() {
+                stopAutoFlip();
+                autoFlipOn = true;
+                $('#autoLabel').text('Стоп');
+                $('#btnAutoFlip').addClass('is-active');
+                autoFlipTimer = setInterval(() => {
+                    const $fb = $('#flipbook');
+                    if (!$fb.length) return;
+                    const page = $fb.turn('page');
+                    const total = $fb.turn('pages');
+                    if (page >= total) {
+                        stopAutoFlip();
+                        return;
+                    }
+                    $fb.turn('next');
+                }, AUTO_MS);
+            }
+            $('#btnAutoFlip').on('click', () => {
+                if (autoFlipOn) stopAutoFlip();
+                else startAutoFlip();
+            });
+
+            // --- Ночной таймер ---
+            let nightTimer = null;
+            let nightRemain = 0;
+            function stopNightTimer() {
+                if (nightTimer) { clearInterval(nightTimer); nightTimer = null; }
+                nightRemain = 0;
+                $('#timerToast').attr('hidden', true);
+                $('#timerLabel').text('Таймер');
+                $('#btnNightTimer').removeClass('is-active');
+                stopAutoFlip();
+            }
+            function tickNightTimer() {
+                nightRemain -= 1;
+                if (nightRemain <= 0) {
+                    stopNightTimer();
+                    stopSpeech();
+                    // мягко выключаем «свет»: ночная тема
+                    prefs.theme = 'night';
+                    savePrefs();
+                    alert('Время чтения закончилось. Спокойной ночи 🌙');
+                    return;
+                }
+                const m = Math.floor(nightRemain / 60);
+                const s = String(nightRemain % 60).padStart(2, '0');
+                $('#timerRemain').text(`${m}:${s}`);
+            }
+            $('#btnNightTimer').on('click', () => {
+                if (nightTimer) {
+                    stopNightTimer();
+                    return;
+                }
+                const mins = prompt('Ночной таймер: на сколько минут?\n(15 / 30 / 45 / 60)', '15');
+                if (mins === null) return;
+                const n = parseInt(mins, 10);
+                if (!n || n < 1 || n > 180) {
+                    alert('Укажите число минут от 1 до 180');
+                    return;
+                }
+                nightRemain = n * 60;
+                $('#timerToast').removeAttr('hidden');
+                $('#timerLabel').text(n + ' мин');
+                $('#btnNightTimer').addClass('is-active');
+                tickNightTimer();
+                nightTimer = setInterval(tickNightTimer, 1000);
+            });
+
+            // Старт
+            applyPrefs();
+            renderBook(currentBook);
+        });
+    </script>
+
+    <div class="site-footer">
+        <div>©Lina_Winter · «©Mirror - info» · 2026</div>
+        <div style="margin-top:6px;">
+            <a href="index.html">Транслятор</a>
+            <a href="https://mirror-info.forum2x2.ru/" target="_blank" rel="noopener">Сайт</a>
+            <a href="https://mirror-info.forum2x2.ru/publi" target="_blank" rel="noopener">Публикации</a>
+            <a href="https://pin.it/4e2vPMAMm" target="_blank" rel="noopener">Pinterest</a>
+            <a href="https://github.com/Lina1209?tab=repositories" target="_blank" rel="noopener">GitHub</a>
+        </div>
+    </div>
+
+</body>
+</html>
