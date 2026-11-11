@@ -1,96 +1,120 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const ADMIN_PASSWORD = 'Lina1209';
-    const AUTH_KEY = 'mirror_translator_admin_auth';
-    const ORDERS_KEY = 'mirror_translator_orders';
+  'use strict';
 
-    const loginScreen = document.getElementById('adminLoginScreen');
-    const dashboard = document.getElementById('adminDashboard');
-    const loginForm = document.getElementById('adminLoginForm');
-    const passwordInput = document.getElementById('adminPassword');
-    const loginError = document.getElementById('adminLoginError');
-    const logoutBtn = document.getElementById('adminLogoutBtn');
-    const container = document.getElementById('adminOrdersContainer');
-    const resetTrialBtn = document.getElementById('resetTrialBtn');
-    const exportCsvBtn = document.getElementById('exportCsvBtn');
+  const container = document.getElementById('adminOrdersContainer');
+  const message = document.getElementById('adminMessage');
+  const refreshButton = document.getElementById('refreshOrders');
+  const statuses = ['Новая', 'В работе', 'Выполнена', 'Отменена'];
+  if (!container) return;
 
-    function showDashboard() {
-        loginScreen.classList.add('hidden');
-        dashboard.classList.remove('hidden');
-        logoutBtn.classList.remove('hidden');
-        renderOrders();
+  function showMessage(text, isError = false) {
+    if (!message) return;
+    message.textContent = text;
+    message.classList.remove('hidden');
+    message.classList.toggle('mk-alert', isError);
+    message.classList.toggle('mk-success', !isError);
+  }
+
+  function addText(parent, tag, label, value) {
+    const row = document.createElement(tag);
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    row.append(strong, document.createTextNode(` ${value || '—'}`));
+    parent.appendChild(row);
+  }
+
+  function renderOrders(orders) {
+    container.replaceChildren();
+    if (!orders.length) {
+      const empty = document.createElement('div');
+      empty.className = 'mk-card p-6 text-center';
+      empty.textContent = 'Заявок пока нет.';
+      container.appendChild(empty);
+      return;
     }
 
-    if (sessionStorage.getItem(AUTH_KEY) === '1') showDashboard();
-
-    loginForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        if (passwordInput.value === ADMIN_PASSWORD) {
-            sessionStorage.setItem(AUTH_KEY, '1');
-            showDashboard();
-        } else {
-            loginError.classList.remove('hidden');
+    for (const order of orders) {
+      const card = document.createElement('article');
+      card.className = 'mk-card p-5';
+      const header = document.createElement('div');
+      header.className = 'flex flex-wrap justify-between items-center gap-3 pb-3 border-b';
+      const title = document.createElement('strong');
+      title.textContent = `#${order.id} · ${order.name} (${order.email})`;
+      const status = document.createElement('select');
+      status.className = 'mk-select';
+      status.setAttribute('aria-label', `Статус заявки ${order.id}`);
+      for (const value of statuses) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        option.selected = value === order.status;
+        status.appendChild(option);
+      }
+      status.addEventListener('change', async () => {
+        status.disabled = true;
+        try {
+          await request('/api/admin/orders', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: order.id, status: status.value })
+          });
+          order.status = status.value;
+          showMessage('Статус заявки обновлён.');
+        } catch (error) {
+          showMessage(error.message, true);
+          status.value = order.status;
+        } finally {
+          status.disabled = false;
         }
-    });
-
-    logoutBtn.addEventListener('click', () => {
-        sessionStorage.removeItem(AUTH_KEY);
-        location.reload();
-    });
-
-    function renderOrders() {
-        const orders = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]');
-        if (!orders.length) {
-            container.innerHTML = '<div class="mk-card p-6 text-center text-[var(--text-muted)]">Заявок пока нет.</div>';
-            return;
-        }
-        const statuses = ['Новая', 'В работе', 'Выполнена', 'Отменена'];
-        container.innerHTML = [...orders].reverse().map(o => `
-            <div class="mk-card p-5">
-                <div class="flex flex-wrap justify-between items-center gap-2 pb-3 border-b border-[var(--border-color)]">
-                    <span class="font-bold text-[var(--primary-color)]">#${o.id} · ${o.name} (${o.email})</span>
-                    <div class="flex items-center gap-2">
-                        <select class="mk-select !w-auto !py-1 text-sm" data-status="${o.id}">
-                            ${statuses.map(s => `<option value="${s}" ${s === (o.status || 'Новая') ? 'selected' : ''}>${s}</option>`).join('')}
-                        </select>
-                        <button type="button" class="mk-btn mk-btn--ghost !p-2 text-red-600" data-del="${o.id}"><i class="fa-regular fa-trash-can"></i></button>
-                    </div>
-                </div>
-                <p class="mt-3 text-sm"><strong>Услуга:</strong> ${o.service} · <strong>Язык:</strong> ${o.lang} · <strong>Объём:</strong> ${o.chars} симв. · <strong>Сумма:</strong> ${o.estimate}</p>
-                ${o.link ? `<p class="mt-1 text-sm"><a href="${o.link}" target="_blank" class="text-[var(--primary-color)] underline">Открыть файл клиента</a></p>` : ''}
-                ${o.comment ? `<p class="mt-2 p-2 rounded bg-[var(--surface-alt)] text-sm">${o.comment}</p>` : ''}
-            </div>
-        `).join('');
-
-        container.querySelectorAll('[data-status]').forEach(sel => {
-            sel.addEventListener('change', (e) => {
-                const list = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]');
-                const item = list.find(x => x.id === e.target.dataset.status);
-                if (item) { item.status = e.target.value; localStorage.setItem(ORDERS_KEY, JSON.stringify(list)); }
-            });
-        });
-
-        container.querySelectorAll('[data-del]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const list = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]').filter(x => x.id !== btn.dataset.del);
-                localStorage.setItem(ORDERS_KEY, JSON.stringify(list));
-                renderOrders();
-            });
-        });
+      });
+      header.append(title, status);
+      card.appendChild(header);
+      addText(card, 'p', 'Услуга:', order.service);
+      addText(card, 'p', 'Язык:', order.language);
+      addText(card, 'p', 'Формат:', order.format);
+      addText(card, 'p', 'Объём:', order.chars ? `${order.chars} символов` : '—');
+      addText(card, 'p', 'Контакт:', order.phone);
+      addText(card, 'p', 'Оплата:', order.payment);
+      addText(card, 'p', 'Расчёт:', order.estimate);
+      addText(card, 'p', 'Дата:', order.created_at);
+      if (order.file_link) {
+        try {
+          const parsed = new URL(order.file_link);
+          if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+            const link = document.createElement('a');
+            link.href = parsed.href;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.className = 'underline';
+            link.textContent = 'Открыть файл клиента';
+            card.appendChild(link);
+          }
+        } catch (_) { /* Ignore malformed submitted URLs. */ }
+      }
+      if (order.comment) addText(card, 'p', 'Комментарий:', order.comment);
+      container.appendChild(card);
     }
+  }
 
-    if (resetTrialBtn) resetTrialBtn.addEventListener('click', () => {
-        localStorage.setItem('mirror_translator_free_left', '3');
-        alert('Лимит бесплатных файлов сброшен (3/3).');
-    });
+  async function request(url, options = {}) {
+    const response = await fetch(url, { ...options, headers: { Accept: 'application/json', ...options.headers } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Ошибка сервера (${response.status}).`);
+    return data;
+  }
 
-    if (exportCsvBtn) exportCsvBtn.addEventListener('click', () => {
-        const orders = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]');
-        if (!orders.length) return alert('Нет заявок для экспорта.');
-        const csv = '\uFEFFID;Статус;Имя;Email;Услуга;Язык;Символов;Расчёт\n' +
-            orders.map(o => `${o.id};${o.status || 'Новая'};${o.name};${o.email};${o.service};${o.lang};${o.chars};${o.estimate}`).join('\n');
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-        a.download = 'orders.csv';
-        a.click();
-    });
+  async function loadOrders() {
+    container.textContent = 'Загружаем заявки…';
+    if (message) message.classList.add('hidden');
+    try {
+      const result = await request('/api/admin/orders');
+      renderOrders(result.orders || []);
+    } catch (error) {
+      container.replaceChildren();
+      showMessage(error.message || 'Не удалось загрузить заявки.', true);
+    }
+  }
+
+  refreshButton?.addEventListener('click', loadOrders);
+  loadOrders();
 });

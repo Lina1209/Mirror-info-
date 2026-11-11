@@ -1,73 +1,43 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Админ-панель — Транслятор файлов</title>
-    <meta name="robots" content="noindex, nofollow">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Заказы — Транслятор файлов</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body class="min-h-screen flex flex-col">
-    <header class="mk-header">
-        <div class="mk-shell mk-header__inner">
-            <a href="index.html" class="mk-brand">
-                <span class="mk-brand__mark"><i class="fa-solid fa-clone"></i></span>
-                <span><span class="mk-brand__name">Транслятор файлов</span><span class="mk-brand__tag">панель управления</span></span>
-            </a>
-            <div class="mk-header__actions">
-                <a href="index.html" class="mk-nav-link">На сайт</a>
-                <button type="button" id="adminLogoutBtn" class="mk-btn mk-btn--ghost mk-btn--sm hidden">Выйти</button>
-            </div>
+  <header class="mk-header">
+    <div class="mk-shell mk-header__inner">
+      <a href="index.html" class="mk-brand">
+        <span class="mk-brand__mark"><i class="fa-solid fa-clone" aria-hidden="true"></i></span>
+        <span><span class="mk-brand__name">Транслятор файлов</span><span class="mk-brand__tag">панель управления</span></span>
+      </a>
+      <div class="mk-header__actions">
+        <a href="index.html" class="mk-nav-link">На сайт</a>
+        <a href="/cdn-cgi/access/logout" class="mk-btn mk-btn--ghost mk-btn--sm">Выйти</a>
+      </div>
+    </div>
+  </header>
+  <main class="flex-1 py-10">
+    <div class="mk-shell">
+      <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 class="mk-section__title">Управление заявками</h1>
+          <p class="text-sm">Доступ защищён Cloudflare Access. Пароль в коде сайта не хранится.</p>
         </div>
-    </header>
-
-    <main id="adminLoginScreen" class="flex-1 flex items-center justify-center py-12 px-4">
-        <div class="mk-card mk-workbench w-full max-w-md">
-            <h1 class="text-2xl font-bold text-center">Вход в админ-панель</h1>
-            <form id="adminLoginForm" class="mt-6 flex flex-col gap-4">
-                <div class="mk-field">
-                    <label class="mk-label" for="adminPassword">Пароль администратора</label>
-                    <input id="adminPassword" type="password" class="mk-input" required>
-                </div>
-                <div id="adminLoginError" class="hidden mk-alert text-sm"><span>Неверный пароль.</span></div>
-                <button type="submit" class="mk-btn mk-btn--primary w-full">Войти</button>
-            </form>
-        </div>
-    </main>
-
-    <main id="adminDashboard" class="hidden flex-1 py-10">
-        <div class="mk-shell">
-            <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-                <h1 class="mk-section__title !mb-0">Управление заявками</h1>
-                <div class="flex gap-2">
-                    <button type="button" id="resetTrialBtn" class="mk-btn mk-btn--ghost mk-btn--sm">Сбросить лимит (3/3)</button>
-                    <button type="button" id="exportCsvBtn" class="mk-btn mk-btn--primary mk-btn--sm">Экспорт CSV</button>
-                </div>
-            </div>
-            <div id="adminOrdersContainer" class="space-y-4"></div>
-        </div>
-    </main>
-
-    <footer class="mk-footer !mt-auto">
-                <div class="mk-shell mk-footer__bottom">
-            <div>
-                <span>©Lina_Winter · «©Mirror - info» · 2026</span>
-                <div class="flex flex-wrap items-center gap-3 mt-2" style="font-size:0.8rem;">
-                    <a href="https://mirror-info.forum2x2.ru/" target="_blank" rel="noopener">Сайт</a>
-                    <a href="https://mirror-info.forum2x2.ru/publi" target="_blank" rel="noopener">Публикации</a>
-                    <a href="https://pin.it/4e2vPMAMm" target="_blank" rel="noopener">Pinterest</a>
-                    <a href="https://github.com/Lina1209?tab=repositories" target="_blank" rel="noopener">GitHub</a>
-                </div>
-            </div>
-            <div class="flex flex-wrap items-center gap-4">
-                <a href="book.html">Читалка</a>
-                <a href="index.html">На главную</a>
-            </div>
-        </div>
-    </footer>
-
-    <script src="admin.js"></script>
+        <button type="button" id="refreshOrders" class="mk-btn mk-btn--ghost mk-btn--sm"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Обновить</button>
+      </div>
+      <div id="adminMessage" class="hidden mk-alert mb-4" role="status"></div>
+      <div id="adminOrdersContainer" class="grid gap-4" aria-live="polite"></div>
+    </div>
+  </main>
+  <footer class="mk-footer">
+    <div class="mk-shell mk-footer__bottom"><span>©Lina_Winter · «©Mirror - info»</span><a href="index.html">На главную</a></div>
+  </footer>
+  <script src="admin.js" defer></script>
 </body>
 </html>

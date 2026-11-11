@@ -6,44 +6,57 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusText = statusWrap?.querySelector('span');
   const successWrap = document.getElementById('orderSuccess');
   const successText = document.getElementById('orderSuccessText');
-
+  const submitButton = document.getElementById('orderSubmit');
   if (!form) return;
 
-  const showStatus = (message, type = 'error') => {
+  // Honeypot field: real users never see or fill this field.
+  const trap = document.createElement('input');
+  trap.type = 'text';
+  trap.name = 'website';
+  trap.autocomplete = 'off';
+  trap.tabIndex = -1;
+  trap.setAttribute('aria-hidden', 'true');
+  trap.style.cssText = 'position:absolute;left:-10000px;width:1px;height:1px;opacity:0';
+  form.appendChild(trap);
+
+  function showError(message) {
     if (!statusWrap || !statusText) return;
     statusText.textContent = message;
     statusWrap.classList.remove('hidden');
-    statusWrap.dataset.type = type;
-  };
+  }
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!form.reportValidity()) return;
 
-    const formData = new FormData(form);
-    const payload = Object.fromEntries(formData.entries());
+    const data = Object.fromEntries(new FormData(form).entries());
+    const estimate = document.getElementById('orderEstimate')?.textContent || '';
+    data.estimate = estimate;
 
-    if (!payload.orderName || !payload.orderEmail) {
-      showStatus('Укажите имя и email для отправки заявки.');
-      return;
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.setAttribute('aria-busy', 'true');
     }
+    if (statusWrap) statusWrap.classList.add('hidden');
 
     try {
-      let result = { ok: true };
-      if (window.AppAPI && typeof window.AppAPI.submitOrder === 'function') {
-        result = await window.AppAPI.submitOrder(payload);
-      }
-      if (!result || result.ok !== true) {
-        throw new Error('Не удалось сохранить заявку.');
-      }
-
+      if (!window.AppAPI?.submitOrder) throw new Error('Сервис заявок временно недоступен.');
+      const result = await window.AppAPI.submitOrder(data);
       form.reset();
-      if (statusWrap) statusWrap.classList.add('hidden');
       if (successWrap) successWrap.classList.remove('hidden');
       if (successText) {
-        successText.textContent = 'Мы получили заявку и ответим в течение 30 минут.';
+        successText.textContent = result.notificationsSent === false
+          ? 'Заявка сохранена. Уведомление администратору задерживается; заявка не потеряна.'
+          : 'Заявка получена. Мы ответим по указанному адресу.';
       }
+      successWrap?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } catch (error) {
-      showStatus(error.message || 'Не удалось отправить заявку. Попробуйте ещё раз.');
+      showError(error.message || 'Не удалось отправить заявку. Попробуйте ещё раз.');
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.removeAttribute('aria-busy');
+      }
     }
   });
 });
