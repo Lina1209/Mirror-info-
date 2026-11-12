@@ -1,43 +1,8 @@
 <!DOCTYPE html>
 <html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="robots" content="noindex, nofollow">
-  <title>Заказы — Транслятор файлов</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
-  <link rel="stylesheet" href="style.css">
-</head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="robots" content="noindex, nofollow"><title>Заказы — Транслятор файлов</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"><link rel="stylesheet" href="style.css"></head>
 <body class="min-h-screen flex flex-col">
-  <header class="mk-header">
-    <div class="mk-shell mk-header__inner">
-      <a href="index.html" class="mk-brand">
-        <span class="mk-brand__mark"><i class="fa-solid fa-clone" aria-hidden="true"></i></span>
-        <span><span class="mk-brand__name">Транслятор файлов</span><span class="mk-brand__tag">панель управления</span></span>
-      </a>
-      <div class="mk-header__actions">
-        <a href="index.html" class="mk-nav-link">На сайт</a>
-        <a href="/cdn-cgi/access/logout" class="mk-btn mk-btn--ghost mk-btn--sm">Выйти</a>
-      </div>
-    </div>
-  </header>
-  <main class="flex-1 py-10">
-    <div class="mk-shell">
-      <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 class="mk-section__title">Управление заявками</h1>
-          <p class="text-sm">Доступ защищён Cloudflare Access. Пароль в коде сайта не хранится.</p>
-        </div>
-        <button type="button" id="refreshOrders" class="mk-btn mk-btn--ghost mk-btn--sm"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Обновить</button>
-      </div>
-      <div id="adminMessage" class="hidden mk-alert mb-4" role="status"></div>
-      <div id="adminOrdersContainer" class="grid gap-4" aria-live="polite"></div>
-    </div>
-  </main>
-  <footer class="mk-footer">
-    <div class="mk-shell mk-footer__bottom"><span>©Lina_Winter · «©Mirror - info»</span><a href="index.html">На главную</a></div>
-  </footer>
-  <script src="admin.js" defer></script>
-</body>
+<header class="mk-header"><div class="mk-shell mk-header__inner"><a href="index.html" class="mk-brand"><span class="mk-brand__mark"><i class="fa-solid fa-clone" aria-hidden="true"></i></span><span><span class="mk-brand__name">Транслятор файлов</span><span class="mk-brand__tag">панель управления</span></span></a><div class="mk-header__actions"><a href="index.html" class="mk-nav-link">На сайт</a><a href="/cdn-cgi/access/logout" class="mk-btn mk-btn--ghost mk-btn--sm">Выйти</a></div></div></header>
+<main class="flex-1 py-10"><div class="mk-shell"><div class="mb-6 flex flex-wrap items-center justify-between gap-4"><div><h1 class="mk-section__title">Управление заявками</h1><p class="text-sm">Вход и доступ контролируются Cloudflare Access; пароль в коде сайта не хранится.</p></div><div class="flex gap-2"><a href="login.html" class="mk-btn mk-btn--ghost mk-btn--sm">Вход</a><button type="button" id="refreshOrders" class="mk-btn mk-btn--ghost mk-btn--sm"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Обновить</button></div></div><div id="adminMessage" class="hidden mk-alert mb-4" role="status"></div><div id="adminOrdersContainer" class="grid gap-4" aria-live="polite"></div></div></main>
+<footer class="mk-footer"><div class="mk-shell mk-footer__bottom"><span>©Lina_Winter · «©Mirror - info»</span><a href="index.html">На главную</a></div></footer><script src="admin.js" defer></script></body>
 </html>
