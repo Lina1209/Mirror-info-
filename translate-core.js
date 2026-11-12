@@ -2,19 +2,46 @@
   'use strict';
 
   const API_URL = '/api/translate';
-  const MAX_CHUNK = 2400;
+  const MAX_CHUNK_CHARS = 1000;
+  const MAX_FILE_BYTES = 5 * 1024 * 1024;
+  const SUPPORTED_TEXT = new Set(['txt', 'md', 'markdown', 'log', 'srt', 'vtt']);
 
-  async function translate(text, sourceLang = 'auto', targetLang = 'ru') {
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ text, sourceLang, targetLang })
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || typeof data.translation !== 'string') {
-      throw new Error(data.error || `Сервис перевода недоступен (${response.status}).`);
+  async function translateChunk(text, sourceLang, targetLang) {
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25_000);
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          credentials: 'same-origin',
+          cache: 'no-store',
+          signal: controller.signal,
+          body: JSON.stringify({ text, sourceLang, targetLang })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (response.status === 404 || response.status === 405) {
+            throw new Error('API перевода не найдена. Опубликуйте проект на Cloudflare Pages: GitHub Pages не запускает Functions.');
+          }
+          const error = new Error(data.error || `Ошибка перевода (${response.status}).`);
+          error.retryable = response.status === 429 || response.status >= 500;
+          throw error;
+        }
+        if (typeof data.translation !== 'string') throw new Error('Сервис вернул некорректный перевод.');
+        return data.translation;
+      } catch (error) {
+        lastError = error;
+        if (error.name === 'AbortError') lastError = new Error('Запрос перевода превысил 25 секунд. Проверьте Cloudflare Functions и повторите попытку.');
+        const canRetry = attempt === 0 && (error.name === 'AbortError' || error.retryable || error instanceof TypeError);
+        if (!canRetry) throw lastError;
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      } finally {
+        clearTimeout(timeout);
+      }
     }
-    return data.translation;
+    throw lastError || new Error('Не удалось выполнить перевод.');
   }
 
   async function getExchangeRates() {
@@ -38,7 +65,7 @@
     return result;
   }
 
-  window.AppAPI = { translate, getExchangeRates, submitOrder };
+  window.AppAPI = { translate: translateChunk, getExchangeRates, submitOrder };
 
   document.addEventListener('DOMContentLoaded', () => {
     const button = document.getElementById('translateBtn');
@@ -46,216 +73,119 @@
     const textInput = document.getElementById('textInput');
     const dropZone = document.getElementById('dropZone');
     const resultText = document.getElementById('resultText');
+    const byId = (id) => document.getElementById(id);
     if (!button || !fileInput) return;
 
     let selectedFile = null;
-    let downloadBlob = null;
-    let downloadName = 'mirror-translation.txt';
+    let resultBlob = null;
+    let resultFilename = 'mirror-translation.txt';
 
-    const byId = (id) => document.getElementById(id);
-    function progress(value, label) {
+    function setProgress(percent, label) {
       byId('progressWrap')?.classList.remove('hidden');
-      if (byId('progressBar')) byId('progressBar').style.width = `${value}%`;
-      if (byId('progressPercent')) byId('progressPercent').textContent = `${Math.round(value)}%`;
+      if (byId('progressBar')) byId('progressBar').style.width = `${percent}%`;
+      if (byId('progressPercent')) byId('progressPercent').textContent = `${Math.round(percent)}%`;
       if (byId('progressLabel')) byId('progressLabel').textContent = label;
     }
-    function error(message) {
+    function showError(message) {
       if (byId('errorText')) byId('errorText').textContent = message;
       byId('errorWrap')?.classList.remove('hidden');
     }
     function clearError() { byId('errorWrap')?.classList.add('hidden'); }
-    function setFile(file) {
+    function selectFile(file) {
       selectedFile = file;
-      byId('fileChip')?.classList.remove('is-hidden');
       if (byId('fileChipName')) byId('fileChipName').textContent = file.name;
       if (byId('fileChipMeta')) byId('fileChipMeta').textContent = `${(file.size / 1024).toFixed(1)} KB`;
+      byId('fileChip')?.classList.remove('is-hidden');
       clearError();
     }
-    function readText(file) { return file.text(); }
 
-    async function translateString(value, onProgress) {
+    async function translateLongText(source, progress) {
       const sourceLang = byId('srcLang')?.value || 'auto';
       const targetLang = byId('tgtLang')?.value || 'ru';
       const chunks = [];
-      let rest = value;
-      while (rest.length) {
-        let end = Math.min(MAX_CHUNK, rest.length);
-        if (end < rest.length) {
-          const boundary = Math.max(rest.lastIndexOf('\n', end), rest.lastIndexOf(' ', end), rest.lastIndexOf('. ', end));
-          if (boundary > end * 0.55) end = boundary + 1;
+      for (let offset = 0; offset < source.length;) {
+        let end = Math.min(offset + MAX_CHUNK_CHARS, source.length);
+        if (end < source.length) {
+          const candidates = ['\n\n', '\n', '. ', ' '].map((separator) => source.lastIndexOf(separator, end));
+          const boundary = Math.max(...candidates);
+          if (boundary > offset + MAX_CHUNK_CHARS * 0.55) end = boundary + 1;
         }
-        chunks.push(rest.slice(0, end));
-        rest = rest.slice(end);
+        chunks.push(source.slice(offset, end));
+        offset = end;
       }
-      if (!chunks.length) return '';
-      let output = '';
-      for (let i = 0; i < chunks.length; i++) {
-        output += await translate(chunks[i], sourceLang, targetLang);
-        onProgress?.((i + 1) / chunks.length);
+      let translated = '';
+      for (let index = 0; index < chunks.length; index++) {
+        translated += await translateChunk(chunks[index], sourceLang, targetLang);
+        progress((index + 1) / chunks.length);
       }
-      return output;
+      return translated;
     }
 
-    function setTextNodes(paragraph, translated) {
-      const walker = paragraph.ownerDocument.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
-      const nodes = [];
-      while (walker.nextNode()) nodes.push(walker.currentNode);
-      if (!nodes.length) return;
-      nodes[0].nodeValue = translated;
-      for (let i = 1; i < nodes.length; i++) nodes[i].nodeValue = '';
+    async function runTranslation() {
+      clearError();
+      byId('resultWrap')?.classList.add('hidden');
+      const pastedText = textInput?.value.trim() || '';
+      if (!selectedFile && !pastedText) throw new Error('Выберите текстовый файл или введите текст.');
+      if (selectedFile && selectedFile.size > MAX_FILE_BYTES) throw new Error('Файл больше 5 МБ. Разделите его на части и повторите попытку.');
+
+      let source = pastedText;
+      let extension = 'txt';
+      if (selectedFile) {
+        extension = selectedFile.name.split('.').pop().toLowerCase();
+        if (!SUPPORTED_TEXT.has(extension)) {
+          throw new Error('На этом этапе поддерживаются TXT, MD, LOG, SRT и VTT. DOCX/EPUB/PDF и другие форматы пока не обрабатываются: выберите текстовый файл, чтобы не получить повреждённый документ.');
+        }
+        setProgress(3, 'Читаем файл…');
+        source = await selectedFile.text();
+      }
+      if (!source.trim()) throw new Error('Файл пустой — переводить нечего.');
+      if (source.length > 200_000) throw new Error('Текст превышает лимит 200 000 символов. Разделите файл на несколько частей.');
+
+      setProgress(8, 'Подключаем сервис перевода…');
+      const translated = await translateLongText(source, (fraction) => setProgress(8 + fraction * 90, `Переводим фрагмент… ${Math.round(fraction * 100)}%`));
+      if (!translated.trim()) throw new Error('Сервис вернул пустой перевод. Попробуйте ещё раз.');
+
+      resultBlob = new Blob([translated], { type: 'text/plain;charset=utf-8' });
+      const stem = (selectedFile?.name || 'mirror-translation').replace(/\.[^.]+$/, '');
+      resultFilename = `${stem}-translated.${SUPPORTED_TEXT.has(extension) ? extension : 'txt'}`;
+      if (resultText) resultText.textContent = translated;
+      if (byId('resultMeta')) byId('resultMeta').textContent = `${byId('srcLang')?.value || 'auto'} → ${byId('tgtLang')?.value || 'ru'} · ${translated.length.toLocaleString('ru-RU')} символов`;
+      if (byId('resultNote')) byId('resultNote').textContent = 'Предпросмотр готов. Результат скачивается как текстовый файл; исходная вёрстка DOCX/PDF и OCR пока не поддерживаются.';
+      byId('resultWrap')?.classList.remove('hidden');
+      setProgress(100, 'Перевод завершён');
+      setTimeout(() => byId('progressWrap')?.classList.add('hidden'), 900);
     }
 
-    async function translateXmlFile(zip, path, progressCallback) {
-      const file = zip.file(path);
-      if (!file) return '';
-      const xml = await file.async('string');
-      const doc = new DOMParser().parseFromString(xml, 'application/xml');
-      if (doc.querySelector('parsererror')) throw new Error(`Не удалось разобрать структуру файла ${path}.`);
-      const isDocx = path.startsWith('word/');
-      const paragraphs = [...doc.getElementsByTagName(isDocx ? 'w:p' : 'p')];
-      const candidates = paragraphs.filter((p) => p.textContent.trim());
-      let all = '';
-      for (let i = 0; i < candidates.length; i++) {
-        const source = candidates[i].textContent;
-        const result = await translateString(source, (fraction) => progressCallback((i + fraction) / Math.max(1, candidates.length)));
-        setTextNodes(candidates[i], result);
-        all += `${result}\n\n`;
-      }
-      zip.file(path, new XMLSerializer().serializeToString(doc));
-      return all;
-    }
-
-    async function translateArchive(file, extension, onProgress) {
-      if (!window.JSZip) throw new Error('Не удалось загрузить обработчик архивов. Обновите страницу и попробуйте ещё раз.');
-      const zip = await JSZip.loadAsync(file);
-      let paths;
-      if (extension === 'docx') {
-        paths = Object.keys(zip.files).filter((path) => /^word\/(document|header\d*|footer\d*)\.xml$/i.test(path));
-      } else if (extension === 'epub') {
-        paths = Object.keys(zip.files).filter((path) => !zip.files[path].dir && /\.(xhtml|html|htm)$/i.test(path));
-      } else {
-        paths = Object.keys(zip.files).filter((path) => !zip.files[path].dir && /\.xml$/i.test(path));
-      }
-      if (!paths.length) throw new Error('В файле не найдены страницы с текстом для перевода.');
-      let output = '';
-      for (let i = 0; i < paths.length; i++) {
-        output += await translateXmlFile(zip, paths[i], (fraction) => onProgress((i + fraction) / paths.length));
-      }
-      return { blob: await zip.generateAsync({ type: 'blob' }), text: output, extension };
-    }
-
-    async function translatePdf(file, onProgress) {
-      if (!window.pdfjsLib) throw new Error('Не загрузился PDF.js. Обновите страницу и попробуйте снова.');
-      const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-      const pages = [];
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        pages.push(content.items.map((item) => item.str).join(' '));
-        onProgress(i / pdf.numPages * 0.25);
-      }
-      const source = pages.join('\n\n');
-      const translated = await translateString(source, (fraction) => onProgress(0.25 + fraction * 0.75));
-      return { blob: new Blob([translated], { type: 'text/plain;charset=utf-8' }), text: translated, extension: 'txt', pdfTextOnly: true };
-    }
-
-    async function translateDocument(file, onProgress) {
-      const extension = file.name.split('.').pop().toLowerCase();
-      if (['docx', 'epub', 'fb2'].includes(extension)) return translateArchive(file, extension, onProgress);
-      if (extension === 'pdf') return translatePdf(file, onProgress);
-      if (!/^(txt|md|markdown|csv|tsv|json|xml|html|htm|srt|vtt|log|ini|yml|yaml|rtf)$/.test(extension)) {
-        throw new Error('Формат не поддержан. Доступны TXT, MD, CSV, XML, HTML, DOCX, EPUB, FB2 и текстовые PDF.');
-      }
-      const source = await readText(file);
-      const translated = await translateString(source, onProgress);
-      const mime = extension === 'html' || extension === 'htm' ? 'text/html;charset=utf-8' : 'text/plain;charset=utf-8';
-      return { blob: new Blob([translated], { type: mime }), text: translated, extension };
-    }
-
-    fileInput.addEventListener('change', () => {
-      const file = fileInput.files?.[0];
-      if (file) setFile(file);
-    });
+    fileInput.addEventListener('change', () => { const file = fileInput.files?.[0]; if (file) selectFile(file); });
     dropZone?.addEventListener('click', () => fileInput.click());
-    dropZone?.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fileInput.click(); }
-    });
+    dropZone?.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fileInput.click(); } });
     dropZone?.addEventListener('dragover', (event) => { event.preventDefault(); dropZone.classList.add('is-dragging'); });
     dropZone?.addEventListener('dragleave', () => dropZone.classList.remove('is-dragging'));
     dropZone?.addEventListener('drop', (event) => {
       event.preventDefault(); dropZone.classList.remove('is-dragging');
       const file = event.dataTransfer?.files?.[0];
-      if (file) { setFile(file); try { const transfer = new DataTransfer(); transfer.items.add(file); fileInput.files = transfer.files; } catch (_) {} }
+      if (file) { selectFile(file); try { const transfer = new DataTransfer(); transfer.items.add(file); fileInput.files = transfer.files; } catch (_) {} }
     });
-    byId('fileRemove')?.addEventListener('click', () => {
-      selectedFile = null; fileInput.value = ''; byId('fileChip')?.classList.add('is-hidden');
+    byId('fileRemove')?.addEventListener('click', () => { selectedFile = null; fileInput.value = ''; byId('fileChip')?.classList.add('is-hidden'); });
+    byId('translateBtn')?.addEventListener('click', async () => {
+      button.disabled = true; button.setAttribute('aria-busy', 'true');
+      try { await runTranslation(); }
+      catch (error) { byId('progressWrap')?.classList.add('hidden'); showError(error.message || 'Не удалось завершить перевод.'); }
+      finally { button.disabled = false; button.removeAttribute('aria-busy'); }
     });
-    byId('pickGalleryBtn')?.addEventListener('click', () => byId('galleryInput')?.click());
-    byId('galleryInput')?.addEventListener('change', (event) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      setFile(file);
-      if (byId('photoPreview')) {
-        const img = document.createElement('img'); img.alt = 'Предпросмотр изображения'; img.style.maxHeight = '260px'; img.src = URL.createObjectURL(file);
-        byId('photoPreview').replaceChildren(img);
-      }
-      error('Для фото и сканов требуется распознавание OCR; загрузка изображения сама по себе не извлекает текст. Введите распознанный текст вручную или используйте PDF с текстовым слоем.');
-    });
-    byId('swapLangs')?.addEventListener('click', () => {
-      const source = byId('srcLang'); const target = byId('tgtLang');
-      if (source && target && source.value !== 'auto') [source.value, target.value] = [target.value, source.value];
-    });
-
-    button.addEventListener('click', async () => {
-      clearError();
-      byId('resultWrap')?.classList.add('hidden');
-      const source = textInput?.value.trim() || '';
-      if (!selectedFile && !source) { error('Выберите файл или введите текст для перевода.'); return; }
-      button.disabled = true;
-      button.setAttribute('aria-busy', 'true');
-      try {
-        progress(2, 'Читаем файл…');
-        let result;
-        if (selectedFile) {
-          result = await translateDocument(selectedFile, (fraction) => progress(10 + Math.min(85, fraction * 85), 'Переводим документ…'));
-        } else {
-          const translated = await translateString(source, (fraction) => progress(10 + fraction * 85, 'Переводим текст…'));
-          result = { blob: new Blob([translated], { type: 'text/plain;charset=utf-8' }), text: translated, extension: 'txt' };
-        }
-        downloadBlob = result.blob;
-        const stem = (selectedFile?.name || 'mirror-translation').replace(/\.[^.]+$/, '');
-        downloadName = `${stem}-translated.${result.extension}`;
-        if (resultText) resultText.textContent = result.text || 'Перевод готов. Скачайте файл для просмотра.';
-        if (byId('resultMeta')) byId('resultMeta').textContent = `${byId('srcLang')?.value || 'auto'} → ${byId('tgtLang')?.value || 'ru'} · ${result.text.length.toLocaleString('ru-RU')} символов`;
-        if (byId('resultNote')) byId('resultNote').textContent = result.pdfTextOnly
-          ? 'PDF распознан как текстовый слой. Сейчас результат скачивается как TXT; исходная вёрстка PDF и OCR сканов не поддерживаются.'
-          : 'Структура DOCX/EPUB/FB2 и исходные ресурсы архива сохранены по возможности; проверьте результат перед использованием.';
-        byId('resultWrap')?.classList.remove('hidden');
-        progress(100, 'Перевод завершён');
-        setTimeout(() => byId('progressWrap')?.classList.add('hidden'), 900);
-      } catch (err) {
-        byId('progressWrap')?.classList.add('hidden');
-        error(err.message || 'Не удалось завершить перевод. Проверьте подключение и повторите попытку.');
-      } finally {
-        button.disabled = false;
-        button.removeAttribute('aria-busy');
-      }
-    });
-
     byId('downloadBtn')?.addEventListener('click', () => {
-      if (!downloadBlob) return;
-      const url = URL.createObjectURL(downloadBlob);
-      const link = document.createElement('a'); link.href = url; link.download = downloadName; link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (!resultBlob) return;
+      const url = URL.createObjectURL(resultBlob); const link = document.createElement('a');
+      link.href = url; link.download = resultFilename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
     byId('copyBtn')?.addEventListener('click', async () => {
-      const text = resultText?.textContent || '';
-      try { await navigator.clipboard.writeText(text); }
-      catch (_) { error('Буфер обмена недоступен. Выделите текст предпросмотра и скопируйте вручную.'); }
+      try { await navigator.clipboard.writeText(resultText?.textContent || ''); }
+      catch (_) { showError('Буфер обмена недоступен. Выделите текст предпросмотра и скопируйте вручную.'); }
     });
     byId('viewBtn')?.addEventListener('click', () => resultText?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
     byId('clearBtn')?.addEventListener('click', () => {
-      textInput && (textInput.value = ''); selectedFile = null; downloadBlob = null; fileInput.value = '';
+      if (textInput) textInput.value = '';
+      selectedFile = null; resultBlob = null; fileInput.value = '';
       byId('fileChip')?.classList.add('is-hidden'); byId('resultWrap')?.classList.add('hidden');
       byId('progressWrap')?.classList.add('hidden'); clearError();
     });
