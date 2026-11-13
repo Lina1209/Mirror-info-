@@ -47,15 +47,24 @@
     if (wrap) wrap.classList.add('hidden');
   }
 
-  function showResult(metaText, translatedText) {
+  function showResult(metaText, translatedText, sourceKind = 'text') {
     const wrap = byId('resultWrap');
     const meta = byId('resultMeta');
     const text = byId('resultText');
     const note = byId('resultNote');
     if (!wrap || !meta || !text || !note) return;
+
     meta.textContent = metaText || '';
     text.textContent = translatedText || '';
-    note.textContent = 'Перевод готов. Его можно скопировать или скачать как текстовый файл.';
+
+    if (sourceKind === 'pdf' || sourceKind === 'scan' || sourceKind === 'image') {
+      note.textContent = 'Текст переведён в режиме "best effort": структура документа и оформление могут отличаться от исходного файла. Для точного сохранения вёрстки нужен отдельный backend или рабочий исходный DOCX/EPUB.';
+    } else if (sourceKind === 'docx' || sourceKind === 'epub' || sourceKind === 'fb2') {
+      note.textContent = 'Новый текст получен с сохранением базовой структуры файла; точное визуальное совпадение с исходной вёрсткой зависит от формата и исходного документа.';
+    } else {
+      note.textContent = 'Перевод готов. Его можно скопировать или скачать как текстовый файл.';
+    }
+
     wrap.classList.remove('hidden');
   }
 
@@ -127,7 +136,7 @@
   }
 
   async function extractPdf(file) {
-    if (!window.pdfjsLib) throw new Error('PDF оқу құралы жүктелмеді. Бетті жаңартып, қайталап көріңіз.');
+    if (!window.pdfjsLib) throw new Error('PDF-движок не загружен. Обновите страницу и попробуйте ещё раз.');
     const pdfjs = window.pdfjsLib;
     if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
       pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
@@ -210,9 +219,12 @@
     if (file.size > MAX_FILE_BYTES) throw new Error('Файл слишком большой. Максимальный размер — 25 МБ.');
     const extension = extensionOf(file);
     if (!SUPPORTED_EXTENSIONS.has(extension)) {
-      throw new Error(`Формат .${extension || 'без расширения'} не поддерживается. Можно выбрать: TXT, RTF, MD, CSV, JSON, HTML, DOCX, EPUB, FB2, PDF или изображение JPG/PNG/WEBP/GIF.`);
+      throw new Error(`Формат .${extension || 'без расширения'} не поддерживается. В текущей версии поддерживаются TXT, MD, DOCX, EPUB, FB2, PDF и изображения JPG/PNG/WEBP/GIF.`);
     }
+
     let text;
+    const sourceKind = extension;
+
     if (TEXT_EXTENSIONS.has(extension)) {
       text = await readAsText(file);
       if (extension === 'html' || extension === 'htm') text = htmlToText(text);
@@ -230,7 +242,8 @@
     } else {
       text = await extractImage(file);
     }
-    return enforceTextLimit(text);
+
+    return { text: enforceTextLimit(text), sourceKind };
   }
 
   function splitForTranslation(text) {
@@ -288,10 +301,15 @@
       preview.replaceChildren(image);
     }
     setProgress(5, 'Читаем выбранный файл…');
-    extractFileText(file).then((text) => {
+    extractFileText(file).then(({ text, sourceKind }) => {
       if (textInput) textInput.value = text;
       hideProgress();
-      if (target === 'photo') setProgress(35, 'Текст распознан. Нажмите «Перевести документ».');
+      if (target === 'photo') {
+        setProgress(35, 'Текст распознан. Нажмите «Перевести документ».');
+      }
+      if (sourceKind === 'pdf' || sourceKind === 'jpg' || sourceKind === 'jpeg' || sourceKind === 'png' || sourceKind === 'webp' || sourceKind === 'gif' || sourceKind === 'bmp') {
+        setError('Подсказка: PDF и сканы в браузере переводятся как текст в режиме best effort. Точное сохранение макета без отдельного backend не гарантируется.');
+      }
     }).catch((error) => {
       hideProgress();
       setError(error.message || 'Не удалось прочитать файл.');
@@ -424,7 +442,9 @@
       try {
         const translated = await translateText(enforceTextLimit(sourceText));
         setProgress(100, 'Перевод готов.');
-        showResult(`${byId('srcLang')?.value || 'auto'} → ${byId('tgtLang')?.value || 'ru'}`, translated);
+        const sourceKind = selectedFile ? extensionOf(selectedFile) : 'text';
+        const normalizedKind = sourceKind === 'pdf' ? 'pdf' : sourceKind === 'docx' ? 'docx' : sourceKind === 'epub' ? 'epub' : sourceKind === 'fb2' ? 'fb2' : (sourceKind === 'jpg' || sourceKind === 'jpeg' || sourceKind === 'png' || sourceKind === 'webp' || sourceKind === 'gif' || sourceKind === 'bmp') ? 'scan' : 'text';
+        showResult(`${byId('srcLang')?.value || 'auto'} → ${byId('tgtLang')?.value || 'ru'}`, translated, normalizedKind);
         setTimeout(hideProgress, 500);
       } catch (error) {
         hideProgress();
