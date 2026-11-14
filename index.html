@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Транслятор файлов — онлайн-перевод документов Word, PDF и EPUB</title>
-    <meta name="description" content="Перевод и конвертация документов Word, EPUB, FB2 и PDF, текстовых файлов, сканов и фотографий между 46 языками с сохранением формата. Три файла бесплатно, калькулятор стоимости.">
+    <meta name="description" content="Извлечение текста из документов Word, EPUB, FB2 и PDF, текстовых файлов, сканов и фотографий для последующего перевода. Статистика объёма и калькулятор стоимости.">
     <meta name="keywords" content="перевод документов, перевод Word, перевод PDF, перевод EPUB, перевод FB2, распознавание сканов, онлайн переводчик файлов">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
@@ -13,6 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;1,500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="counter.css">
 </head>
 <body class="min-h-screen bg-[var(--background-color)] text-[var(--text-color)]" style="font-family: var(--font-body);">
     <header id="siteHeader" class="mk-header">
@@ -74,8 +75,8 @@
             <div class="mk-shell">
                 <div class="mk-hero__intro">
                     <span class="mk-eyebrow"><span class="mk-eyebrow__line" aria-hidden="true"></span>Онлайн-перевод документов</span>
-                    <h1 id="hero-title" class="mk-hero__title">Переведите документ с сохранением форматирования</h1>
-                    <p class="mk-hero__lead">Загрузите файл Word, PDF или EPUB — или фото и скан страницы с текстом. Сервис переведёт документ с сохранением разметки и структуры, а текст с картинки или сканированного файла распознаёт и переведёт в отдельный файл. Результат можно посмотреть и скачать.</p>
+                    <h1 id="hero-title" class="mk-hero__title">Переведите текст из документа</h1>
+                    <p class="mk-hero__lead">Загрузите файл Word, PDF, EPUB, FB2, текстовый документ или фото страницы. Сервис извлечёт или распознает текст, подготовит его к переводу и покажет результат для просмотра, копирования и скачивания в TXT. Исходная вёрстка документа пока не сохраняется.</p>
                 </div>
             </div>
         </section>
@@ -123,6 +124,35 @@
                         </div>
                         <input type="file" id="galleryInput" class="hidden" accept="image/*">
                     </div>
+
+                    <section id="documentStats" class="mk-doc-stats hidden mt-5" aria-live="polite" aria-label="Статистика документа">
+                        <h3 class="mk-doc-stats__heading">Объём документа</h3>
+                        <div class="mk-doc-stats__grid">
+                            <div class="mk-doc-stats__item">
+                                <span class="mk-doc-stats__label">Символы с пробелами</span>
+                                <strong id="docStatCharacters">0</strong>
+                            </div>
+                            <div class="mk-doc-stats__item">
+                                <span class="mk-doc-stats__label">Слова</span>
+                                <strong id="docStatWords">0</strong>
+                            </div>
+                            <div class="mk-doc-stats__item">
+                                <span class="mk-doc-stats__label">Стандартные страницы</span>
+                                <strong id="docStatStandardPages">0</strong>
+                                <small>1 страница = 1 800 символов</small>
+                            </div>
+                            <div class="mk-doc-stats__item">
+                                <span class="mk-doc-stats__label">Страницы по объёму слов</span>
+                                <strong id="docStatWordPages">0</strong>
+                                <small>Ориентир: 250 слов на страницу</small>
+                            </div>
+                            <div class="mk-doc-stats__item">
+                                <span class="mk-doc-stats__label">Физические страницы</span>
+                                <strong id="docStatPhysicalPages">Не определяется для этого формата</strong>
+                            </div>
+                        </div>
+                        <p id="docStatSource" class="mk-doc-stats__source"></p>
+                    </section>
 
                     <div class="mt-6 grid gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
                         <div class="mk-field">
@@ -208,7 +238,7 @@
                                 <div class="flex flex-wrap gap-2">
                                     <button type="button" id="viewBtn" class="mk-btn mk-btn--ghost mk-btn--sm"><i class="fa-regular fa-eye"></i> Просмотр</button>
                                     <button type="button" id="copyBtn" class="mk-btn mk-btn--ghost mk-btn--sm"><i class="fa-regular fa-copy"></i> Копировать</button>
-                                    <button type="button" id="downloadBtn" class="mk-btn mk-btn--primary mk-btn--sm"><i class="fa-solid fa-download"></i> Скачать файл</button>
+                                    <button type="button" id="downloadBtn" class="mk-btn mk-btn--primary mk-btn--sm"><i class="fa-solid fa-download"></i> Скачать текст (.txt)</button>
                                 </div>
                             </div>
                             <div id="resultPane" class="mk-pane mt-4"><div id="resultText" class="mk-pane__text"></div></div>
@@ -422,6 +452,7 @@
 
     <script src="api.js"></script>
     <script src="translate-core.js"></script>
+    <script src="document-counter.js"></script>
     <script src="calculator.js"></script>
     <script src="order.js"></script>
     <script src="app.js"></script>
