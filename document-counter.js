@@ -1,150 +1,58 @@
-/* Mirror-info: автоматический счётчик символов и страниц.
- * Подключать после translate-core.js и до calculator.js.
+/* Mirror-info: document statistics -> calculator bridge.
+ * Add the matching stats panel markup to index.html and load this file
+ * after translate-core.js but before calculator.js.
  */
 (function () {
   'use strict';
-
   const CHARS_PER_PAGE = 1800;
+  const WORDS_PER_PAGE = 250;
+  const $ = id => document.getElementById(id);
+  const fmt = n => Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 
-  function $(id) {
-    return document.getElementById(id);
-  }
-
-  function formatNumber(value, maximumFractionDigits = 0) {
-    return Number(value).toLocaleString('ru-RU', {
-      maximumFractionDigits
-    });
-  }
-
-  function formatCategory(fileName, explicitFormat) {
-    if (explicitFormat) return explicitFormat;
-
-    const ext = String(fileName || '').split('.').pop().toLowerCase();
-    if (['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'tif', 'tiff'].includes(ext)) {
-      return 'scan';
+  function render(text, details = {}) {
+    const panel = $('documentStats');
+    if (!panel) return;
+    const value = String(text || '');
+    const chars = value.length;
+    const words = (value.trim().match(/\S+/g) || []).length;
+    if (!value.trim()) {
+      panel.classList.add('hidden');
+      return;
     }
-    if (['docx', 'epub', 'fb2'].includes(ext)) return 'document';
-    return 'text';
-  }
+    const standardPages = chars / CHARS_PER_PAGE;
+    const wordPages = words / WORDS_PER_PAGE;
+    if ($('docStatCharacters')) $('docStatCharacters').textContent = fmt(chars);
+    if ($('docStatWords')) $('docStatWords').textContent = fmt(words);
+    if ($('docStatStandardPages')) $('docStatStandardPages').textContent = fmt(standardPages);
+    if ($('docStatWordPages')) $('docStatWordPages').textContent = fmt(wordPages);
+    if ($('docStatPhysicalPages')) $('docStatPhysicalPages').textContent =
+      Number(details.physicalPages) > 0 ? fmt(details.physicalPages) : 'Не определяется для этого формата';
+    if ($('docStatSource')) $('docStatSource').textContent =
+      details.fileName ? 'Источник: ' + details.fileName : 'Источник: введённый текст';
+    panel.classList.remove('hidden');
 
-  function updateCalculator(characters, category) {
     const calcChars = $('calcChars');
     if (calcChars) {
-      calcChars.value = String(characters);
+      calcChars.value = String(chars);
       calcChars.dispatchEvent(new Event('input', { bubbles: true }));
     }
-
     const calcFormat = $('calcFormat');
-    if (calcFormat && category && [...calcFormat.options].some(option => option.value === category)) {
+    const ext = String(details.fileName || '').split('.').pop().toLowerCase();
+    const category = ['pdf','jpg','jpeg','png','webp','tif','tiff','bmp'].includes(ext)
+      ? 'scan' : (['docx','epub','fb2','rtf'].includes(ext) ? 'document' : 'text');
+    if (calcFormat && Array.from(calcFormat.options).some(o => o.value === category)) {
       calcFormat.value = category;
       calcFormat.dispatchEvent(new Event('change', { bubbles: true }));
     }
-
-    const sourceLanguage = $('srcLang');
-    const calcLanguage = $('calcLang');
-    const targetLanguage = $('tgtLang');
-    if (calcLanguage && targetLanguage) {
-      const target = targetLanguage.value;
-      if ([...calcLanguage.options].some(option => option.value === target)) {
-        calcLanguage.value = target;
-        calcLanguage.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    }
   }
 
-  function renderStats(text, details = {}) {
-    const panel = $('documentStats');
-    if (!panel) return;
-
-    const value = String(text || '');
-    const characters = value.length;
-
-    if (!value.trim()) {
-      panel.classList.add('hidden');
-      const calcChars = $('calcChars');
-      if (calcChars) {
-        calcChars.value = '100';
-        calcChars.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      return;
+  document.addEventListener('DOMContentLoaded', () => {
+    const input = $('textInput');
+    if (input) {
+      input.addEventListener('input', () => render(input.value, { fileName: 'Введённый текст' }));
+      if (input.value.trim()) render(input.value, { fileName: 'Введённый текст' });
     }
-
-    const standardPages = characters / CHARS_PER_PAGE;
-    const charsNode = $('docStatCharacters');
-    const pagesNode = $('docStatStandardPages');
-    const physicalNode = $('docStatPhysicalPages');
-    const sourceNode = $('docStatSource');
-
-    if (charsNode) charsNode.textContent = formatNumber(characters);
-    if (pagesNode) pagesNode.textContent = formatNumber(standardPages, 3);
-
-    if (physicalNode) {
-      const count = Number(details.physicalPages);
-      physicalNode.textContent = Number.isFinite(count) && count > 0
-        ? formatNumber(count)
-        : 'Не определяется для этого формата';
-    }
-
-    if (sourceNode) {
-      sourceNode.textContent = details.fileName
-        ? `Источник: ${details.fileName}`
-        : 'Источник: введённый текст';
-    }
-
-    panel.classList.remove('hidden');
-    updateCalculator(characters, formatCategory(details.fileName, details.format));
-  }
-
-  document.addEventListener('DOMContentLoaded', function () {
-    const textInput = $('textInput');
-
-    if (textInput) {
-      textInput.addEventListener('input', function () {
-        renderStats(textInput.value, {
-          fileName: 'Введённый текст',
-          physicalPages: null,
-          format: 'text'
-        });
-      });
-
-      if (textInput.value.trim()) {
-        renderStats(textInput.value, {
-          fileName: 'Введённый текст',
-          physicalPages: null,
-          format: 'text'
-        });
-      }
-    }
-
-    window.addEventListener('mirror-info:document-loaded', function (event) {
-      const detail = event.detail || {};
-      renderStats(detail.text || (textInput && textInput.value) || '', detail);
-    });
-
-    window.addEventListener('mirror-info:document-cleared', function () {
-      renderStats('', {});
-    });
-
-    const clearButton = $('clearBtn');
-    if (clearButton) {
-      clearButton.addEventListener('click', function () {
-        window.setTimeout(function () {
-          renderStats(textInput ? textInput.value : '', {
-            fileName: 'Введённый текст',
-            physicalPages: null,
-            format: 'text'
-          });
-        }, 0);
-      });
-    }
-
-    const removeButton = $('fileRemove');
-    if (removeButton) {
-      removeButton.addEventListener('click', function () {
-        window.setTimeout(function () {
-          if (!textInput || !textInput.value.trim()) renderStats('', {});
-        }, 0);
-      });
-    }
+    window.addEventListener('mirror-info:document-loaded', e => render(e.detail?.text || input?.value || '', e.detail || {}));
+    window.addEventListener('mirror-info:document-cleared', () => render('', {}));
   });
 })();
