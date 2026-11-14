@@ -1,13 +1,16 @@
-/* Mirror-info: надёжная загрузка и чтение документов.
- * Поддержка: TXT/MD/CSV/JSON/XML/HTML/RTF, DOCX, EPUB, FB2, PDF и изображения.
- * PDF со сканами и изображения распознаются через Tesseract.js (OCR).
- * Не показываем посетителям технические параметры инфраструктуры.
- * Обработка зависит от памяти устройства, браузера и доступности сервисов.
+/* Mirror-info — надёжная обработка и перевод документов.
+ * TXT / MD / CSV / JSON / XML / HTML / RTF
+ * DOCX / EPUB / FB2 / PDF / изображения
+ * OCR: Tesseract.js
  */
 (function () {
   'use strict';
 
   const OCR_LANG = 'rus+eng';
+  const MAX_CHUNK_LENGTH = 900;
+  const REQUEST_DELAY = 350;
+  const MAX_RETRIES = 3;
+
   let selectedFileText = '';
   let selectedFile = null;
   let ocrWorkerPromise = null;
@@ -17,170 +20,423 @@
   function showError(message) {
     const wrap = $('errorWrap');
     const text = $('errorText');
+
     if (wrap && text) {
       text.textContent = message || 'Не удалось обработать файл.';
       wrap.classList.remove('hidden');
     }
   }
+
   function clearError() {
     $('errorWrap')?.classList.add('hidden');
   }
+
   function progress(percent, label) {
     $('progressWrap')?.classList.remove('hidden');
-    if ($('progressBar')) $('progressBar').style.width = `${Math.max(0, Math.min(100, percent))}%`;
-    if ($('progressPercent')) $('progressPercent').textContent = `${Math.round(percent)}%`;
-    if ($('progressLabel')) $('progressLabel').textContent = label;
-  }
-  function hideProgress() { $('progressWrap')?.classList.add('hidden'); }
 
+    if ($('progressBar')) {
+      $('progressBar').style.width =
+        `${Math.max(0, Math.min(100, percent))}%`;
+    }
+
+    if ($('progressPercent')) {
+      $('progressPercent').textContent =
+        `${Math.round(percent)}%`;
+    }
+
+    if ($('progressLabel')) {
+      $('progressLabel').textContent = label;
+    }
+  }
+
+  function hideProgress() {
+    $('progressWrap')?.classList.add('hidden');
+  }
+
+  function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Загрузка внешних библиотек
   function loadScript(src, test) {
     if (test()) return Promise.resolve();
+
     return new Promise((resolve, reject) => {
-      const existing = [...document.scripts].find((s) => s.src === src);
+      const existing = [...document.scripts]
+        .find(script => script.src === src);
+
       if (existing) {
+        if (test()) {
+          resolve();
+          return;
+        }
+
         existing.addEventListener('load', resolve, { once: true });
-        existing.addEventListener('error', () => reject(new Error('Не загрузилась библиотека обработки файла.')), { once: true });
-        if (test()) resolve();
+
+        existing.addEventListener('error', () => {
+          reject(new Error(
+            'Не удалось загрузить библиотеку обработки файла.'
+          ));
+        }, { once: true });
+
         return;
       }
+
       const script = document.createElement('script');
+
       script.src = src;
       script.async = true;
+
       script.onload = resolve;
-      script.onerror = () => reject(new Error('Не удалось загрузить компонент обработки документа. Проверьте интернет-соединение и попробуйте ещё раз.'));
+
+      script.onerror = () => {
+        reject(new Error(
+          'Не удалось загрузить компонент обработки документа. ' +
+          'Проверьте интернет-соединение и попробуйте ещё раз.'
+        ));
+      };
+
       document.head.appendChild(script);
     });
   }
 
   async function ensurePdfJs() {
-    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', () => !!window.pdfjsLib);
-    if (!window.pdfjsLib) throw new Error('Компонент чтения PDF не загрузился.');
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    await loadScript(
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+      () => !!window.pdfjsLib
+    );
+
+    if (!window.pdfjsLib) {
+      throw new Error('Компонент чтения PDF не загрузился.');
+    }
+
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
     return window.pdfjsLib;
   }
+
   async function ensureMammoth() {
-    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js', () => !!window.mammoth);
-    if (!window.mammoth) throw new Error('Компонент чтения DOCX не загрузился.');
+    await loadScript(
+      'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js',
+      () => !!window.mammoth
+    );
+
+    if (!window.mammoth) {
+      throw new Error('Компонент чтения DOCX не загрузился.');
+    }
+
     return window.mammoth;
   }
+
   async function ensureJSZip() {
-    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', () => !!window.JSZip);
-    if (!window.JSZip) throw new Error('Компонент чтения EPUB не загрузился.');
+    await loadScript(
+      'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+      () => !!window.JSZip
+    );
+
+    if (!window.JSZip) {
+      throw new Error('Компонент чтения EPUB не загрузился.');
+    }
+
     return window.JSZip;
   }
+
   async function ensureTesseract() {
-    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', () => !!window.Tesseract);
-    if (!window.Tesseract) throw new Error('Компонент распознавания сканов не загрузился.');
+    await loadScript(
+      'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+      () => !!window.Tesseract
+    );
+
+    if (!window.Tesseract) {
+      throw new Error('Компонент распознавания сканов не загрузился.');
+    }
+
     if (!ocrWorkerPromise) {
-      ocrWorkerPromise = window.Tesseract.createWorker(OCR_LANG, 1, {
-        logger: (event) => {
-          if (event.status === 'recognizing text' && event.progress) {
-            progress(35 + event.progress * 35, 'Распознаём текст на скане…');
+      ocrWorkerPromise = window.Tesseract.createWorker(
+        OCR_LANG,
+        1,
+        {
+          logger: event => {
+            if (
+              event.status === 'recognizing text' &&
+              event.progress
+            ) {
+              progress(
+                35 + event.progress * 35,
+                'Распознаём текст на скане…'
+              );
+            }
           }
         }
-      });
+      );
     }
+
     return ocrWorkerPromise;
   }
 
   function extension(file) {
     return (file.name.split('.').pop() || '').toLowerCase();
   }
+
   function updateFileChip(file) {
-    if ($('fileChip')) $('fileChip').classList.remove('is-hidden');
-    if ($('fileChipName')) $('fileChipName').textContent = file.name;
-    if ($('fileChipMeta')) $('fileChipMeta').textContent =
-      `${(file.size / 1024 / 1024).toFixed(2)} МБ · ${file.type || 'тип файла определён по расширению'}`;
+    if ($('fileChip')) {
+      $('fileChip').classList.remove('is-hidden');
+    }
+
+    if ($('fileChipName')) {
+      $('fileChipName').textContent = file.name;
+    }
+
+    if ($('fileChipMeta')) {
+      $('fileChipMeta').textContent =
+        `${(file.size / 1024 / 1024).toFixed(2)} МБ · ` +
+        `${file.type || 'тип определён по расширению'}`;
+    }
   }
+
   function previewImage(file) {
     const target = $('photoPreview');
+
     if (!target) return;
+
     const url = URL.createObjectURL(file);
+
     target.replaceChildren();
+
     const img = document.createElement('img');
+
     img.src = url;
     img.alt = 'Предпросмотр загруженного изображения';
-    img.style.cssText = 'max-width:100%;max-height:280px;object-fit:contain;border-radius:14px;';
+
+    img.style.cssText =
+      'max-width:100%;max-height:280px;' +
+      'object-fit:contain;border-radius:14px;';
+
     img.onload = () => URL.revokeObjectURL(url);
+
     target.appendChild(img);
   }
 
+  // Чтение обычного текста
   async function readText(file) {
     const buffer = await file.arrayBuffer();
+
     try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+      return new TextDecoder('utf-8', {
+        fatal: true
+      }).decode(buffer);
     } catch (_) {
-      try { return new TextDecoder('windows-1251').decode(buffer); }
-      catch (_) { throw new Error('Не удалось определить кодировку. Сохраните документ в UTF-8 и загрузите снова.'); }
+      try {
+        return new TextDecoder('windows-1251').decode(buffer);
+      } catch (_) {
+        throw new Error(
+          'Не удалось определить кодировку. ' +
+          'Сохраните документ в UTF-8 и загрузите снова.'
+        );
+      }
     }
   }
 
+  // Чтение Word
   async function readDocx(file) {
     const mammoth = await ensureMammoth();
-    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+
+    const result = await mammoth.extractRawText({
+      arrayBuffer: await file.arrayBuffer()
+    });
+
     return result.value || '';
   }
 
+  // Чтение FB2
   async function readFb2(file) {
     const xml = await readText(file);
-    const doc = new DOMParser().parseFromString(xml, 'application/xml');
-    if (doc.querySelector('parsererror')) throw new Error('Файл FB2 повреждён или содержит некорректный XML.');
-    return [...doc.querySelectorAll('body, title, annotation, epigraph, section')].map((n) => n.textContent.trim()).filter(Boolean).join('\n\n');
+
+    const doc = new DOMParser().parseFromString(
+      xml,
+      'application/xml'
+    );
+
+    if (doc.querySelector('parsererror')) {
+      throw new Error(
+        'Файл FB2 повреждён или содержит некорректный XML.'
+      );
+    }
+
+    return [
+      ...doc.querySelectorAll(
+        'body, title, annotation, epigraph, section'
+      )
+    ]
+      .map(node => node.textContent.trim())
+      .filter(Boolean)
+      .join('\n\n');
   }
 
+  // Чтение EPUB
   async function readEpub(file) {
     const JSZip = await ensureJSZip();
-    const zip = await JSZip.loadAsync(await file.arrayBuffer());
-    const containerFile = zip.file('META-INF/container.xml');
-    if (!containerFile) throw new Error('В EPUB отсутствует файл META-INF/container.xml.');
-    const container = new DOMParser().parseFromString(await containerFile.async('text'), 'application/xml');
-    const rootfile = container.querySelector('rootfile')?.getAttribute('full-path');
-    if (!rootfile) throw new Error('Не удалось найти структуру книги EPUB.');
+
+    const zip = await JSZip.loadAsync(
+      await file.arrayBuffer()
+    );
+
+    const containerFile = zip.file(
+      'META-INF/container.xml'
+    );
+
+    if (!containerFile) {
+      throw new Error(
+        'В EPUB отсутствует файл META-INF/container.xml.'
+      );
+    }
+
+    const container = new DOMParser().parseFromString(
+      await containerFile.async('text'),
+      'application/xml'
+    );
+
+    const rootfile = container
+      .querySelector('rootfile')
+      ?.getAttribute('full-path');
+
+    if (!rootfile) {
+      throw new Error(
+        'Не удалось найти структуру книги EPUB.'
+      );
+    }
+
     const opfFile = zip.file(rootfile);
-    if (!opfFile) throw new Error('В EPUB отсутствует файл описания книги.');
-    const opf = new DOMParser().parseFromString(await opfFile.async('text'), 'application/xml');
+
+    if (!opfFile) {
+      throw new Error(
+        'В EPUB отсутствует файл описания книги.'
+      );
+    }
+
+    const opf = new DOMParser().parseFromString(
+      await opfFile.async('text'),
+      'application/xml'
+    );
+
     const manifest = new Map();
-    opf.querySelectorAll('manifest item').forEach((item) => {
-      manifest.set(item.getAttribute('id'), item.getAttribute('href'));
+
+    opf.querySelectorAll('manifest item').forEach(item => {
+      manifest.set(
+        item.getAttribute('id'),
+        item.getAttribute('href')
+      );
     });
-    const base = rootfile.includes('/') ? rootfile.slice(0, rootfile.lastIndexOf('/') + 1) : '';
+
+    const base = rootfile.includes('/')
+      ? rootfile.slice(0, rootfile.lastIndexOf('/') + 1)
+      : '';
+
     const sections = [];
+
     for (const item of opf.querySelectorAll('spine itemref')) {
-      const href = manifest.get(item.getAttribute('idref'));
+      const href = manifest.get(
+        item.getAttribute('idref')
+      );
+
       if (!href) continue;
-      const path = (base + decodeURIComponent(href)).replace(/\\/g, '/');
-      const entry = zip.file(path) || zip.file(base + href);
+
+      let decodedHref = href;
+
+      try {
+        decodedHref = decodeURIComponent(href);
+      } catch (_) {}
+
+      const path = (
+        base + decodedHref
+      ).replace(/\\/g, '/');
+
+      const entry =
+        zip.file(path) ||
+        zip.file(base + href);
+
       if (!entry) continue;
-      const html = new DOMParser().parseFromString(await entry.async('text'), 'text/html');
-      html.querySelectorAll('script,style,nav').forEach((n) => n.remove());
-      const text = (html.body?.textContent || '').replace(/\s+/g, ' ').trim();
+
+      const html = new DOMParser().parseFromString(
+        await entry.async('text'),
+        'text/html'
+      );
+
+      html.querySelectorAll(
+        'script, style, nav'
+      ).forEach(node => node.remove());
+
+      const text = (
+        html.body?.textContent || ''
+      )
+        .replace(/\s+/g, ' ')
+        .trim();
+
       if (text) sections.push(text);
     }
+
     return sections.join('\n\n');
   }
 
+  // OCR изображений
   async function ocrImage(source) {
     const worker = await ensureTesseract();
+
     const result = await worker.recognize(source);
+
     return result.data?.text || '';
   }
 
+  // Чтение PDF
   async function readPdf(file) {
     const pdfjs = await ensurePdfJs();
-    const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+
+    const pdf = await pdfjs.getDocument({
+      data: await file.arrayBuffer()
+    }).promise;
+
     const pages = [];
-    for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
-      progress(5 + pageNo / pdf.numPages * 65, `Читаем PDF: страница ${pageNo} из ${pdf.numPages}…`);
+
+    for (
+      let pageNo = 1;
+      pageNo <= pdf.numPages;
+      pageNo++
+    ) {
+      progress(
+        5 + pageNo / pdf.numPages * 65,
+        `Читаем PDF: страница ${pageNo} из ${pdf.numPages}…`
+      );
+
       const page = await pdf.getPage(pageNo);
+
       const content = await page.getTextContent();
-      let text = content.items.map((item) => item.str || '').join(' ').replace(/[ \t]+/g, ' ').trim();
+
+      let text = content.items
+        .map(item => item.str || '')
+        .join(' ')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+
       if (text.length < 25) {
-        const viewport = page.getViewport({ scale: 1.5 });
+        const viewport = page.getViewport({
+          scale: 1.5
+        });
+
         const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d', { willReadFrequently: true });
+
+        const context = canvas.getContext('2d', {
+          willReadFrequently: true
+        });
+
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
-        await page.render({ canvasContext: context, viewport }).promise;
+
+        await page.render({
+          canvasContext: context,
+          viewport
+        }).promise;
+
         try {
           text = await ocrImage(canvas);
         } finally {
@@ -188,191 +444,505 @@
           canvas.height = 0;
         }
       }
+
       if (text) pages.push(text);
     }
+
     return pages.join('\n\n');
   }
 
+  // Определение формата и извлечение текста
   async function extractFile(file) {
-    if (!file) throw new Error('Сначала выберите файл.');
-    if (file.size === 0) throw new Error('Выбран пустой файл.');
+    if (!file) {
+      throw new Error('Сначала выберите файл.');
+    }
+
+    if (file.size === 0) {
+      throw new Error('Выбран пустой файл.');
+    }
+
     const ext = extension(file);
-    if (file.type.startsWith('image/') || ['jpg','jpeg','png','webp','bmp','tif','tiff'].includes(ext)) {
+
+    if (
+      file.type.startsWith('image/') ||
+      [
+        'jpg', 'jpeg', 'png', 'webp',
+        'bmp', 'tif', 'tiff'
+      ].includes(ext)
+    ) {
       return await ocrImage(file);
     }
+
     if (ext === 'pdf') return await readPdf(file);
     if (ext === 'docx') return await readDocx(file);
     if (ext === 'epub') return await readEpub(file);
     if (ext === 'fb2') return await readFb2(file);
-    if (['txt','md','markdown','csv','tsv','json','xml','html','htm','srt','vtt','log','ini','yml','yaml','rtf'].includes(ext)) {
+
+    if (
+      [
+        'txt', 'md', 'markdown', 'csv', 'tsv',
+        'json', 'xml', 'html', 'htm',
+        'srt', 'vtt', 'log', 'ini',
+        'yml', 'yaml', 'rtf'
+      ].includes(ext)
+    ) {
       let text = await readText(file);
-      if (ext === 'rtf') text = text.replace(/\\'[0-9a-f]{2}/gi, ' ').replace(/\\[a-z]+-?\d* ?/gi, ' ').replace(/[{}]/g, ' ').replace(/\s+/g, ' ');
+
+      if (ext === 'rtf') {
+        text = text
+          .replace(/\\'[0-9a-f]{2}/gi, ' ')
+          .replace(/\\[a-z]+-?\d* ?/gi, ' ')
+          .replace(/[{}]/g, ' ')
+          .replace(/\s+/g, ' ');
+      }
+
       return text;
     }
-    throw new Error(`Формат .${ext || 'неизвестен'} пока не поддерживается. Поддерживаются PDF, DOCX, EPUB, FB2, TXT, RTF, MD, CSV, HTML, JSON и изображения JPG/PNG/WEBP/TIFF.`);
+
+    throw new Error(
+      `Формат .${ext || 'неизвестен'} пока не поддерживается. ` +
+      'Поддерживаются PDF, DOCX, EPUB, FB2, TXT, RTF, ' +
+      'MD, CSV, HTML, JSON и изображения JPG/PNG/WEBP/TIFF.'
+    );
   }
 
-  function splitText(text, maxLength = 3200) {
+  // Деление большого текста на небольшие фрагменты
+  function splitText(text, maxLength = MAX_CHUNK_LENGTH) {
     const paragraphs = text.split(/\n{2,}/);
+
     const chunks = [];
+
     let current = '';
+
     for (const paragraph of paragraphs) {
-      let part = paragraph;
+      let part = paragraph.trim();
+
+      if (!part) continue;
+
       while (part.length > maxLength) {
-        if (current) { chunks.push(current); current = ''; }
+        if (current) {
+          chunks.push(current);
+          current = '';
+        }
+
         let cut = part.lastIndexOf(' ', maxLength);
-        if (cut < maxLength * 0.55) cut = maxLength;
-        chunks.push(part.slice(0, cut));
+
+        if (cut < maxLength * 0.55) {
+          cut = maxLength;
+        }
+
+        chunks.push(part.slice(0, cut).trim());
+
         part = part.slice(cut).trim();
       }
-      if ((current + '\n\n' + part).trim().length > maxLength && current) {
+
+      const combined = current
+        ? current + '\n\n' + part
+        : part;
+
+      if (
+        combined.length > maxLength &&
+        current
+      ) {
         chunks.push(current);
         current = part;
       } else {
-        current = (current ? current + '\n\n' : '') + part;
+        current = combined;
       }
     }
-    if (current) chunks.push(current);
+
+    if (current) {
+      chunks.push(current);
+    }
+
     return chunks;
   }
 
+  // Перевод одного фрагмента с повторными попытками
+  async function translateChunk(
+    text,
+    source,
+    target
+  ) {
+    let lastError;
+
+    for (
+      let attempt = 1;
+      attempt <= MAX_RETRIES;
+      attempt++
+    ) {
+      try {
+        return await window.AppAPI.translate(
+          text,
+          source,
+          target
+        );
+      } catch (error) {
+        lastError = error;
+
+        if (attempt < MAX_RETRIES) {
+          await delay(attempt * 1200);
+        }
+      }
+    }
+
+    if (
+      lastError?.message === 'Failed to fetch' ||
+      lastError instanceof TypeError
+    ) {
+      throw new Error(
+        'Не удалось связаться с сервисом перевода. ' +
+        'Проверьте интернет-соединение и попробуйте ещё раз.'
+      );
+    }
+
+    throw lastError || new Error(
+      'Не удалось перевести фрагмент текста.'
+    );
+  }
+
+  // Перевод всего документа
   async function translateInParts(text) {
-    if (!window.AppAPI?.translate) throw new Error('Сервис перевода пока не подключён.');
+    if (!window.AppAPI?.translate) {
+      throw new Error(
+        'Сервис перевода пока не подключён.'
+      );
+    }
+
     const source = $('srcLang')?.value || 'auto';
     const target = $('tgtLang')?.value || 'ru';
+
     const chunks = splitText(text);
-    const translated = [];
-    for (let i = 0; i < chunks.length; i++) {
-      progress(72 + (i / chunks.length) * 25, `Переводим фрагмент ${i + 1} из ${chunks.length}…`);
-      translated.push(await window.AppAPI.translate(chunks[i], source, target));
+
+    if (!chunks.length) {
+      throw new Error('В документе нет текста для перевода.');
     }
+
+    const translated = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      progress(
+        72 + ((i + 1) / chunks.length) * 25,
+        `Переводим фрагмент ${i + 1} из ${chunks.length}…`
+      );
+
+      const result = await translateChunk(
+        chunks[i],
+        source,
+        target
+      );
+
+      translated.push(result);
+
+      if (i < chunks.length - 1) {
+        await delay(REQUEST_DELAY);
+      }
+    }
+
     return translated.join('\n\n');
   }
 
+  // Показ результата
   function showResult(file, text) {
-    if ($('resultMeta')) $('resultMeta').textContent = `${file?.name || 'Текст'} · ${text.length.toLocaleString('ru-RU')} символов`;
-    if ($('resultText')) $('resultText').textContent = text;
-    if ($('resultNote')) $('resultNote').textContent = 'Результат можно скопировать или скачать как TXT. Для сложной вёрстки оригинала форматирование пока не сохраняется.';
+    if ($('resultMeta')) {
+      $('resultMeta').textContent =
+        `${file?.name || 'Текст'} · ` +
+        `${text.length.toLocaleString('ru-RU')} символов`;
+    }
+
+    if ($('resultText')) {
+      $('resultText').textContent = text;
+    }
+
+    if ($('resultNote')) {
+      $('resultNote').textContent =
+        'Результат можно скопировать или скачать как TXT. ' +
+        'Для сложной вёрстки оригинала форматирование пока не сохраняется.';
+    }
+
     $('resultWrap')?.classList.remove('hidden');
   }
 
+  // Очистка выбранного файла
   function clearSelection() {
     selectedFile = null;
     selectedFileText = '';
-    if ($('fileInput')) $('fileInput').value = '';
-    if ($('galleryInput')) $('galleryInput').value = '';
-    $('fileChip')?.classList.add('is-hidden');
-    if ($('fileChipName')) $('fileChipName').textContent = '';
-    if ($('fileChipMeta')) $('fileChipMeta').textContent = '';
-    if ($('photoPreview')) $('photoPreview').innerHTML = '<p class="mk-photo__empty">Фото страницы, скриншот или скан — текст распознаётся и переводится.</p>';
-  }
 
-  function bindDownloads() {
-    $('copyBtn')?.addEventListener('click', async () => {
-      const text = $('resultText')?.textContent || '';
-      if (!text) return;
-      try { await navigator.clipboard.writeText(text); }
-      catch (_) { showError('Не удалось открыть буфер обмена. Выделите текст результата и скопируйте вручную.'); }
-    });
-    $('downloadBtn')?.addEventListener('click', () => {
-      const text = $('resultText')?.textContent || '';
-      if (!text) return;
-      const blob = new Blob(['\uFEFF', text], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'mirror-info-translation.txt';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    const fileInput = $('fileInput');
-    const galleryInput = $('galleryInput');
-    const dropZone = $('dropZone');
-    const textInput = $('textInput');
-    const translateBtn = $('translateBtn');
-
-    bindDownloads();
-
-    async function chooseFile(file, isPhoto = false) {
-      if (!file) return;
-      clearError();
-      selectedFile = file;
-      selectedFileText = '';
-      updateFileChip(file);
-      if (isPhoto || file.type.startsWith('image/')) previewImage(file);
-      progress(3, 'Проверяем файл…');
-      try {
-        selectedFileText = await extractFile(file);
-        if (!selectedFileText.trim()) throw new Error('Текст не найден. Возможно, скан нечёткий или защищён от копирования. Попробуйте более чёткое изображение.');
-        if (textInput) textInput.value = selectedFileText;
-        progress(100, 'Файл прочитан. Можно переводить.');
-        setTimeout(hideProgress, 900);
-      } catch (error) {
-        hideProgress();
-        showError(error.message || 'Не удалось прочитать файл.');
-      }
+    if ($('fileInput')) {
+      $('fileInput').value = '';
     }
 
-    fileInput?.addEventListener('change', () => chooseFile(fileInput.files?.[0]));
-    galleryInput?.addEventListener('change', () => chooseFile(galleryInput.files?.[0], true));
-    $('pickGalleryBtn')?.addEventListener('click', () => galleryInput?.click());
-    $('fileRemove')?.addEventListener('click', clearSelection);
+    if ($('galleryInput')) {
+      $('galleryInput').value = '';
+    }
 
-    dropZone?.addEventListener('click', () => fileInput?.click());
-    dropZone?.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        fileInput?.click();
-      }
-    });
-    ['dragenter','dragover'].forEach((name) => dropZone?.addEventListener(name, (event) => {
-      event.preventDefault();
-      dropZone.classList.add('is-dragover');
-    }));
-    ['dragleave','drop'].forEach((name) => dropZone?.addEventListener(name, (event) => {
-      event.preventDefault();
-      dropZone.classList.remove('is-dragover');
-    }));
-    dropZone?.addEventListener('drop', (event) => {
-      const file = event.dataTransfer?.files?.[0];
-      if (file) chooseFile(file);
-    });
+    $('fileChip')?.classList.add('is-hidden');
 
-    $('clearBtn')?.addEventListener('click', () => {
-      clearSelection();
-      if (textInput) textInput.value = '';
-      clearError();
-      $('resultWrap')?.classList.add('hidden');
-      hideProgress();
-    });
+    if ($('fileChipName')) {
+      $('fileChipName').textContent = '';
+    }
 
-    translateBtn?.addEventListener('click', async () => {
-      clearError();
-      let source = (textInput?.value || '').trim();
-      if (!source && selectedFileText) source = selectedFileText.trim();
-      if (!source) {
-        showError('Сначала загрузите файл или введите текст.');
-        return;
+    if ($('fileChipMeta')) {
+      $('fileChipMeta').textContent = '';
+    }
+
+    if ($('photoPreview')) {
+      $('photoPreview').innerHTML =
+        '<p class="mk-photo__empty">' +
+        'Фото страницы, скриншот или скан — ' +
+        'текст распознаётся и переводится.' +
+        '</p>';
+    }
+  }
+
+  // Копирование и скачивание
+  function bindDownloads() {
+    $('copyBtn')?.addEventListener(
+      'click',
+      async () => {
+        const text = $('resultText')?.textContent || '';
+
+        if (!text) return;
+
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          showError(
+            'Не удалось открыть буфер обмена. ' +
+            'Выделите текст результата и скопируйте вручную.'
+          );
+        }
       }
-      translateBtn.disabled = true;
-      try {
-        progress(70, 'Подготавливаем перевод…');
-        const result = await translateInParts(source);
-        showResult(selectedFile, result);
-        progress(100, 'Перевод готов.');
-        setTimeout(hideProgress, 800);
-      } catch (error) {
-        hideProgress();
-        showError(error.message || 'Сервис перевода временно недоступен. Попробуйте позже.');
-      } finally {
-        translateBtn.disabled = false;
+    );
+
+    $('downloadBtn')?.addEventListener(
+      'click',
+      () => {
+        const text = $('resultText')?.textContent || '';
+
+        if (!text) return;
+
+        const blob = new Blob(
+          ['\uFEFF', text],
+          { type: 'text/plain;charset=utf-8' }
+        );
+
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+
+        a.href = url;
+        a.download = 'mirror-info-translation.txt';
+
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        setTimeout(
+          () => URL.revokeObjectURL(url),
+          1000
+        );
       }
-    });
-  });
+    );
+  }
+
+  // Запуск приложения
+  document.addEventListener(
+    'DOMContentLoaded',
+    () => {
+      const fileInput = $('fileInput');
+      const galleryInput = $('galleryInput');
+      const dropZone = $('dropZone');
+      const textInput = $('textInput');
+      const translateBtn = $('translateBtn');
+
+      bindDownloads();
+
+      // Выбор и чтение файла
+      async function chooseFile(file, isPhoto = false) {
+        if (!file) return;
+
+        clearError();
+
+        selectedFile = file;
+        selectedFileText = '';
+
+        updateFileChip(file);
+
+        if (isPhoto || file.type.startsWith('image/')) {
+          previewImage(file);
+        }
+
+        progress(3, 'Проверяем файл…');
+
+        try {
+          selectedFileText = await extractFile(file);
+
+          if (!selectedFileText.trim()) {
+            throw new Error(
+              'Текст не найден. Возможно, скан нечёткий ' +
+              'или документ защищён от копирования. ' +
+              'Попробуйте другой файл.'
+            );
+          }
+
+          if (textInput) {
+            textInput.value = selectedFileText;
+          }
+
+          progress(
+            100,
+            'Файл прочитан. Можно переводить.'
+          );
+
+          setTimeout(hideProgress, 900);
+
+        } catch (error) {
+          hideProgress();
+
+          showError(
+            error.message || 'Не удалось прочитать файл.'
+          );
+        }
+      }
+
+      fileInput?.addEventListener(
+        'change',
+        () => chooseFile(fileInput.files?.[0])
+      );
+
+      galleryInput?.addEventListener(
+        'change',
+        () => chooseFile(
+          galleryInput.files?.[0],
+          true
+        )
+      );
+
+      $('pickGalleryBtn')?.addEventListener(
+        'click',
+        () => galleryInput?.click()
+      );
+
+      $('fileRemove')?.addEventListener(
+        'click',
+        clearSelection
+      );
+
+      dropZone?.addEventListener(
+        'click',
+        () => fileInput?.click()
+      );
+
+      dropZone?.addEventListener(
+        'keydown',
+        event => {
+          if (
+            event.key === 'Enter' ||
+            event.key === ' '
+          ) {
+            event.preventDefault();
+            fileInput?.click();
+          }
+        }
+      );
+
+      ['dragenter', 'dragover'].forEach(name => {
+        dropZone?.addEventListener(name, event => {
+          event.preventDefault();
+          dropZone.classList.add('is-dragover');
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(name => {
+        dropZone?.addEventListener(name, event => {
+          event.preventDefault();
+          dropZone.classList.remove('is-dragover');
+        });
+      });
+
+      dropZone?.addEventListener(
+        'drop',
+        event => {
+          const file = event.dataTransfer?.files?.[0];
+
+          if (file) chooseFile(file);
+        }
+      );
+
+      // Полная очистка
+      $('clearBtn')?.addEventListener(
+        'click',
+        () => {
+          clearSelection();
+
+          if (textInput) {
+            textInput.value = '';
+          }
+
+          clearError();
+
+          $('resultWrap')?.classList.add('hidden');
+
+          hideProgress();
+        }
+      );
+
+      // Кнопка перевода
+      translateBtn?.addEventListener(
+        'click',
+        async () => {
+          clearError();
+
+          let source = (
+            textInput?.value || ''
+          ).trim();
+
+          if (!source && selectedFileText) {
+            source = selectedFileText.trim();
+          }
+
+          if (!source) {
+            showError(
+              'Сначала загрузите файл или введите текст.'
+            );
+            return;
+          }
+
+          translateBtn.disabled = true;
+
+          try {
+            $('resultWrap')?.classList.add('hidden');
+
+            progress(
+              70,
+              'Подготавливаем перевод…'
+            );
+
+            const result = await translateInParts(source);
+
+            showResult(selectedFile, result);
+
+            progress(
+              100,
+              'Перевод готов.'
+            );
+
+            setTimeout(hideProgress, 800);
+
+          } catch (error) {
+            hideProgress();
+
+            showError(
+              error.message ||
+              'Сервис перевода временно недоступен. Попробуйте позже.'
+            );
+
+          } finally {
+            translateBtn.disabled = false;
+          }
+        }
+      );
+    }
+  );
 })();
-                                   
