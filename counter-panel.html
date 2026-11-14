@@ -1,0 +1,22 @@
+<!-- Автоматический счётчик объёма документа.
+     Вставить в index.html после закрывающего </div> блока panelPhoto
+     и перед блоком выбора языков (<div class="mt-6 grid ...">). -->
+<div id="documentStats" class="mk-doc-stats hidden mt-4" aria-live="polite">
+    <div class="mk-doc-stats__heading">Объём загруженного документа</div>
+    <div class="mk-doc-stats__grid">
+        <div class="mk-doc-stats__item">
+            <span class="mk-doc-stats__label">Символов с пробелами</span>
+            <strong id="docStatCharacters">0</strong>
+        </div>
+        <div class="mk-doc-stats__item">
+            <span class="mk-doc-stats__label">Стандартных страниц</span>
+            <strong id="docStatStandardPages">0</strong>
+            <small>1 страница = 1 800 символов</small>
+        </div>
+        <div class="mk-doc-stats__item">
+            <span class="mk-doc-stats__label">Физических страниц</span>
+            <strong id="docStatPhysicalPages">Не определяется для этого формата</strong>
+        </div>
+    </div>
+    <p id="docStatSource" class="mk-doc-stats__source"></p>
+</div>

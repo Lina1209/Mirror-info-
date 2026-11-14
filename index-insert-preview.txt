@@ -1,0 +1,9 @@
+HTML-фрагмент: см. counter-panel.html
+
+Порядок скриптов внизу index.html должен стать:
+<script src="api.js"></script>
+<script src="translate-core.js"></script>
+<script src="document-counter.js"></script>
+<script src="calculator.js"></script>
+<script src="order.js"></script>
+<script src="app.js"></script>
