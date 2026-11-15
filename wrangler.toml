@@ -5,4 +5,4 @@ compatibility_date = "2026-11-11"
 [[d1_databases]]
 binding = "DB"
 database_name = "mirror-info-orders"
-database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+database_id = "18bf0f34-ac4d-48ee-a0dd-59b25d44d0cb"
