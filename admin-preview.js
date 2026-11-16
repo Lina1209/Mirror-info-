@@ -641,9 +641,12 @@ function setupOwnerMenu() {
   });
 }
 
-function renderNotificationItems() {
-  const list = $("notificationsList");
-const ownerNotifications = $("ownerNotifications");
+function setupOwnerMenu() {
+  const button = $("ownerMenu");
+  const menu = $("ownerDropdown");
+  const ownerNotifications = $("ownerNotifications");
+
+  if (!button || !menu) return;
   if (!list) return;
 
   list.innerHTML = "";
