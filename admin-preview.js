@@ -527,7 +527,7 @@ function renderDemoSection(view) {
   if (Array.isArray(section.rows) && section.rows.length) {
     html += '<div class="table-wrap"><table><thead><tr>';
 
-    section.headers.forEach(header => {
+    section.columns.forEach(header => {
       html += "<th>" + header + "</th>";
     });
 
