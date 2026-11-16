@@ -42,7 +42,15 @@
   <main>
     <header class="top">
       <div><div class="eyebrow">Рабочее пространство / <span id="sectionName">Обзор</span></div><h1 id="pageTitle">Добро пожаловать!</h1></div>
-      <div class="actions"><button class="btn" id="bell">♧ Уведомления <b>3</b></button><button class="btn">Владелец ▾</button></div>
+      <div class="actions">
+  <button class="btn" id="bell">♧ Уведомления <b>3</b></button>
+  <div style="position:relative">
+    <button class="btn" id="ownerMenu" type="button" aria-expanded="false">Владелец ▾</button>
+    <div id="ownerDropdown" hidden style="position:absolute;right:0;top:45px;background:white;border:1px solid #e7eaf0;border-radius:9px;padding:8px;min-width:190px;z-index:10;box-shadow:0 8px 24px #0002">
+      <button class="btn" type="button" data-view="profile" style="width:100%">Профиль владельца</button>
+    </div>
+  </div>
+      </div>
     </header>
     <div class="demo">Демонстрационный макет. Здесь только примеры — реальные заявки, сообщения и база данных не подключены. Изменения не сохраняются.</div>
     <section class="stats">
