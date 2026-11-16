@@ -497,9 +497,81 @@ document.addEventListener("keydown",event => {
   if (event.key === "Escape") closeOrder();
 });
 
-$("bell")?.addEventListener("click",() => {
-  showToast("У вас 3 демонстрационных уведомления.");
-});
+function setupNotifications() {
+  const bell = $("bell");
+  if (!bell) return;
+
+  const panel = document.createElement("div");
+  panel.id = "notificationsPanel";
+
+  Object.assign(panel.style, {
+    display: "none",
+    position: "fixed",
+    top: "110px",
+    right: "16px",
+    width: "min(340px, calc(100vw - 32px))",
+    background: "#fff",
+    border: "1px solid #e7eaf0",
+    borderRadius: "14px",
+    padding: "16px",
+    boxShadow: "0 8px 30px #20263830",
+    zIndex: "1000"
+  });
+
+  const heading = document.createElement("h3");
+  heading.textContent = "Уведомления";
+  panel.appendChild(heading);
+
+  const items = [
+    ["📋 Новая заявка", "Поступила новая заявка от Анны Ивановой.", "orders"],
+    ["✉ Новое сообщение", "Клиент отправил новое сообщение.", "messages"],
+    ["₸ Ожидает оплаты", "Есть платёж, ожидающий оплаты.", "payments"]
+  ];
+
+  items.forEach(([title, description, view]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = title + " — " + description;
+
+    Object.assign(button.style, {
+      display: "block",
+      width: "100%",
+      padding: "12px",
+      marginTop: "8px",
+      textAlign: "left",
+      border: "1px solid #e7eaf0",
+      borderRadius: "9px",
+      background: "#f8faff",
+      cursor: "pointer"
+    });
+
+    button.addEventListener("click", () => {
+      panel.style.display = "none";
+      switchView(view);
+    });
+
+    panel.appendChild(button);
+  });
+
+  document.body.appendChild(panel);
+
+  bell.type = "button";
+  bell.addEventListener("click", event => {
+    event.stopPropagation();
+    panel.style.display =
+      panel.style.display === "none" ? "block" : "none";
+  });
+
+  panel.addEventListener("click", event => {
+    event.stopPropagation();
+  });
+
+  document.addEventListener("click", () => {
+    panel.style.display = "none";
+  });
+}
+
+setupNotifications();
 
 setupOwnerMenu();
 renderOrders();
