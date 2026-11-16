@@ -228,7 +228,7 @@ function markViewed(recordKey,view) {
   updateNotificationCount();
   renderNotificationItems();
 
-  showToast("Запись отмечена как просмотренная.");
+  
 }
 
 function addHistory(orderId,text) {
