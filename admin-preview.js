@@ -560,7 +560,7 @@ function renderDemoSection(view) {
         section.columns [0] ||
 
 "Запись",
-        section.headers.map((header, i) => [
+        section.columns.map((header, i) => [
           header,
           record[i] || "—"
         ]),
