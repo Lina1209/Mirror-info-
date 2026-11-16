@@ -546,9 +546,12 @@ function setupNotifications() {
     });
 
     button.addEventListener("click", () => {
-      panel.style.display = "none";
-      switchView(view);
-    });
+  panel.style.display = "none";
+  switchView(view);
+  if (view === "orders") {
+    openOrder(demoOrders[0]);
+  }
+});
 
     panel.appendChild(button);
   });
