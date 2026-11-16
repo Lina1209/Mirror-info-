@@ -1,472 +1,68 @@
-// Mirror-info — интерактивный демонстрационный макет.
-// Только вымышленные данные: никаких запросов к API, базе данных или production.
-"use strict";
-
-const orders = [
-  {id:"MI-2026-001",name:"Анна Иванова",email:"anna@example.com",service:"Перевод документа",date:"16.11.2026",amount:"4 500 ₽",status:"Новая",note:"Ожидает подтверждения заявки."},
-  {id:"MI-2026-002",name:"Мария Петрова",email:"maria@example.com",service:"Редактирование текста",date:"15.11.2026",amount:"2 800 ₽",status:"В работе",note:"Передана специалисту."},
-  {id:"MI-2026-003",name:"Елена Смирнова",email:"elena@example.com",service:"Конвертация файла",date:"14.11.2026",amount:"1 100 ₽",status:"Выполнена",note:"Заказ завершён."},
-  {id:"MI-2026-004",name:"Ольга Кузнецова",email:"olga@example.com",service:"Перевод документа",date:"13.11.2026",amount:"3 600 ₽",status:"Отменена",note:"Демонстрационная отмена."},
-  {id:"MI-2026-005",name:"Ирина Соколова",email:"irina@example.com",service:"Редактирование текста",date:"12.11.2026",amount:"2 200 ₽",status:"Новая",note:"Ожидается проверка данных."}
-];
-
-const messages = [
-  {name:"Анна Иванова",subject:"Уточнение по заявке MI-2026-001",time:"12:18",text:"Здравствуйте! Подскажите, пожалуйста, когда будет готов расчёт?",unread:true},
-  {name:"Мария Петрова",subject:"Документы для заказа",time:"Вчера",text:"Отправила дополнительный файл к заявке.",unread:true},
-  {name:"Елена Смирнова",subject:"Благодарность",time:"14 ноя",text:"Спасибо, всё получила!",unread:false}
-];
-
-const payments = [
-  ["PAY-001","Анна Иванова","MI-2026-001","4 500 ₽","16.11.2026","Ожидает оплаты"],
-  ["PAY-002","Мария Петрова","MI-2026-002","2 800 ₽","15.11.2026","Оплачено"],
-  ["PAY-003","Ольга Кузнецова","MI-2026-004","3 600 ₽","13.11.2026","Возврат"]
-];
-
-const users = [
-  ["Анна Иванова","anna@example.com","2","10.11.2026","Активен"],
-  ["Мария Петрова","maria@example.com","4","02.11.2026","Активен"],
-  ["Елена Смирнова","elena@example.com","1","14.11.2026","Активен"],
-  ["Ольга Кузнецова","olga@example.com","3","21.10.2026","Проверка"]
-];
-
-const staff = [
-  ["Алексей Орлов","Старший администратор","8","Активен"],
-  ["Наталья Белова","Администратор заявок","5","Активен"],
-  ["Ирина Волкова","Поддержка клиентов","3","Активен"]
-];
-
-const events = [
-  ["12:18","Новое сообщение от Анны Ивановой","Сообщения"],
-  ["11:52","Создана заявка MI-2026-001","Заявки"],
-  ["10:30","Платёж PAY-002 отмечен как оплаченный","Платежи"],
-  ["Вчера","Мария Петрова добавила документ","Заявки"]
-];
-
-const titles = {
-  overview:"Обзор",
-  orders:"Заявки",
-  messages:"Сообщения",
-  payments:"Платежи",
-  users:"Пользователи",
-  staff:"Сотрудники",
-  reports:"Отчёты",
-  settings:"Настройки",
-  profile:"Профиль владельца",
-  notifications:"Уведомления"
-};
-
-const stats = document.querySelector(".stats");
-const panel = document.querySelector(".panel");
-const toast = document.getElementById("toast");
-
-let orderFilter = "all";
-
-function esc(v) {
-  return String(v).replace(/[&<>"']/g, c => ({
-    "&":"&amp;",
-    "<":"&lt;",
-    ">":"&gt;",
-    '"':"&quot;",
-    "'":"&#039;"
-  }[c]));
-}
-
-function ping(t) {
-  toast.textContent = t;
-  toast.style.display = "block";
-  clearTimeout(ping.timer);
-  ping.timer = setTimeout(() => toast.style.display = "none", 2400);
-}
-
-function cards(data) {
-  stats.innerHTML = data.map(x =>
-    '<article class="stat"><span>' +
-    esc(x[0]) +
-    '</span><strong>' +
-    esc(x[1]) +
-    '</strong><em>' +
-    esc(x[2] || "Демонстрационные данные") +
-    '</em></article>'
-  ).join("");
-}
-
-function table(title, heads, rows) {
-  panel.innerHTML =
-    '<div class="panel-head"><h2>' +
-    esc(title) +
-    '</h2><div class="filters"><input id="sectionSearch" type="search" placeholder="Поиск в разделе"></div></div>' +
-    '<div class="table-wrap"><table><thead><tr>' +
-    heads.map(h => '<th>' + esc(h) + '</th>').join("") +
-    '</tr></thead><tbody>' +
-    rows +
-    '</tbody></table></div>' +
-    '<div class="bottom"><span>Демонстрационные записи</span><span>Изменения не сохраняются</span></div>';
-
-  const input = document.getElementById("sectionSearch");
-
-  input.addEventListener("input", () => {
-    panel.querySelectorAll("tbody tr").forEach(r => {
-      r.style.display = r.textContent.toLowerCase().includes(input.value.toLowerCase()) ? "" : "none";
-    });
-  });
-}
-
-function badge(s) {
-  const c =
-    s === "Новая" ? "s-new" :
-    s === "В работе" ? "s-work" :
-    s === "Выполнена" || s === "Оплачено" ? "s-done" :
-    s === "Отменена" || s === "Возврат" ? "s-cancel" : "";
-
-  return '<span class="status ' + c + '">' + esc(s) + '</span>';
-}
-
-function showOrder(id) {
-  const o = orders.find(x => x.id === id);
-  if (!o) return;
-
-  document.getElementById("detailTitle").textContent = "Заявка " + o.id;
-
-  document.getElementById("detailGrid").innerHTML = [
-    ["Клиент",o.name],
-    ["Эл. почта",o.email],
-    ["Услуга",o.service],
-    ["Дата",o.date],
-    ["Стоимость",o.amount],
-    ["Статус",o.status]
-  ].map(x =>
-    '<div class="field"><small>' +
-    esc(x[0]) +
-    '</small><strong>' +
-    esc(x[1]) +
-    '</strong></div>'
-  ).join("");
-
-  document.getElementById("detailComment").textContent = o.note;
-  document.getElementById("detail").classList.add("open");
-}
-
-function renderOrders() {
-  const list = orders.filter(o =>
-    orderFilter === "all" || o.status === orderFilter
-  );
-
-  const rows = list.map(o =>
-    '<tr data-id="' + o.id + '">' +
-    '<td><span class="id">' + o.id + '</span></td>' +
-    '<td>' + esc(o.name) + '</td>' +
-    '<td>' + esc(o.service) + '</td>' +
-    '<td>' + o.date + '</td>' +
-    '<td>' + o.amount + '</td>' +
-    '<td>' + badge(o.status) + '</td>' +
-    '</tr>'
-  ).join("");
-
-  panel.innerHTML =
-    '<div class="panel-head"><h2>Все заявки</h2><div class="filters"><input id="sectionSearch" type="search" placeholder="Поиск по заявке или клиенту"></div></div>' +
-    '<div class="tabs">' +
-    [
-      ["all","Все"],
-      ["Новая","Новые"],
-      ["В работе","В работе"],
-      ["Выполнена","Завершённые"],
-      ["Отменена","Отменённые"]
-    ].map(x =>
-      '<button data-filter="' + x[0] + '" class="' +
-      (orderFilter === x[0] ? "active" : "") +
-      '">' + x[1] + '</button>'
-    ).join("") +
-    '</div>' +
-    '<div class="table-wrap"><table><thead><tr>' +
-    '<th>Заявка</th><th>Клиент</th><th>Услуга</th><th>Дата</th><th>Сумма</th><th>Статус</th>' +
-    '</tr></thead><tbody>' +
-    rows +
-    '</tbody></table></div>' +
-    '<div class="bottom"><span>Показано ' + list.length + ' из ' + orders.length + '</span><span>20 на странице · макет</span></div>';
-
-  panel.querySelectorAll("[data-id]").forEach(r => {
-    r.onclick = () => showOrder(r.dataset.id);
-  });
-
-  panel.querySelectorAll("[data-filter]").forEach(b => {
-    b.onclick = () => {
-      orderFilter = b.dataset.filter;
-      renderOrders();
-    };
-  });
-
-  document.getElementById("sectionSearch").oninput = e => {
-    panel.querySelectorAll("tbody tr").forEach(r => {
-      r.style.display = r.textContent.toLowerCase().includes(e.target.value.toLowerCase()) ? "" : "none";
-    });
-  };
-}
-
-function overview() {
-  cards([
-    ["Всего заявок","128","↑ 12 за неделю"],
-    ["Новые","3","Требуют внимания"],
-    ["В работе","14","Активные заказы"],
-    ["Ожидают оплаты","5","На проверке"]
-  ]);
-
-  panel.innerHTML =
-    '<div class="panel-head"><h2>Последние события</h2><button class="btn" id="allOrders">Все заявки</button></div>' +
-    events.map(e =>
-      '<div style="padding:13px 4px;border-bottom:1px solid var(--line);display:flex;gap:15px">' +
-      '<span style="color:var(--muted);min-width:55px">' + esc(e[0]) + '</span>' +
-      '<span>' + esc(e[1]) + '</span>' +
-      '<span style="margin-left:auto;color:var(--accent)">' + esc(e[2]) + '</span>' +
-      '</div>'
-    ).join("");
-
-  document.getElementById("allOrders").onclick = () => go("orders");
-}
-
-function renderMessages() {
-  cards([
-    ["Всего диалогов","18","Пример"],
-    ["Непрочитанные","2","Требуют ответа"],
-    ["Ответы сегодня","6","Пример"],
-    ["Ожидают ответа","2","Пример"]
-  ]);
-
-  panel.innerHTML =
-    '<div class="panel-head"><h2>Входящие сообщения</h2><span class="status s-new">2 новых</span></div>' +
-    '<div style="display:grid;grid-template-columns:minmax(160px,.8fr) minmax(200px,1.2fr);gap:14px">' +
-    '<div>' +
-    messages.map((m,i) =>
-      '<button class="btn" data-msg="' + i + '" style="display:block;width:100%;text-align:left;margin-bottom:8px;white-space:normal">' +
-      '<b>' + esc(m.name) + (m.unread ? ' · ●' : '') + '</b><br>' +
-      '<small>' + esc(m.subject) + '</small><br>' +
-      '<small>' + esc(m.time) + '</small></button>'
-    ).join("") +
-    '</div>' +
-    '<div id="msgDetail" class="dialog-note"><b>' +
-    esc(messages[0].name) +
-    '</b><p>' + esc(messages[0].text) +
-    '</p><textarea id="reply" placeholder="Ответ (только макет)" style="width:100%;min-height:75px;padding:9px"></textarea>' +
-    '<button class="btn" id="sendDemo">Показать ответ</button></div></div>' +
-    '<p class="eyebrow">Сообщения не отправляются — это демонстрация.</p>';
-
-  function bindReply() {
-    document.getElementById("sendDemo").onclick = () => {
-      ping("Это макет: сообщение не отправлено.");
-    };
-  }
-
-  panel.querySelectorAll("[data-msg]").forEach(b => {
-    b.onclick = () => {
-      const m = messages[+b.dataset.msg];
-
-      document.getElementById("msgDetail").innerHTML =
-        '<b>' + esc(m.name) + '</b><p>' + esc(m.text) +
-        '</p><textarea id="reply" placeholder="Ответ (только макет)" style="width:100%;min-height:75px;padding:9px"></textarea>' +
-        '<button class="btn" id="sendDemo">Показать ответ</button>';
-
-      bindReply();
-    };
-  });
-
-  bindReply();
-}
-
-function renderPayments() {
-  cards([
-    ["Получено","24 800 ₽","Пример"],
-    ["Ожидает оплаты","4 500 ₽","Пример"],
-    ["Возвраты","3 600 ₽","Пример"],
-    ["Операций","3","Тестовый список"]
-  ]);
-
-  table(
-    "История платежей",
-    ["Платёж","Клиент","Заявка","Сумма","Дата","Статус"],
-    payments.map(p =>
-      '<tr>' +
-      p.map((v,i) =>
-        '<td>' + (i === 5 ? badge(v) : esc(v)) + '</td>'
-      ).join("") +
-      '</tr>'
-    ).join("")
-  );
-}
-
-function renderUsers() {
-  cards([
-    ["Клиенты","86","Пример"],
-    ["Новые за месяц","12","Пример"],
-    ["Активные","79","Пример"],
-    ["Требуют проверки","1","Пример"]
-  ]);
-
-  table(
-    "Клиенты",
-    ["Имя","Эл. почта","Заявок","Регистрация","Статус"],
-    users.map(p =>
-      '<tr>' +
-      p.map(v => '<td>' + esc(v) + '</td>').join("") +
-      '</tr>'
-    ).join("")
-  );
-}
-
-function renderStaff() {
-  cards([
-    ["Сотрудники","3","Тестовый список"],
-    ["Активные","3","Пример"],
-    ["Назначенные задачи","16","Пример"],
-    ["Роли","3","Пример"]
-  ]);
-
-  table(
-    "Команда и роли",
-    ["Сотрудник","Роль","Задач","Статус"],
-    staff.map(p =>
-      '<tr>' +
-      p.map(v => '<td>' + esc(v) + '</td>').join("") +
-      '</tr>'
-    ).join("")
-  );
-}
-
-function renderReports() {
-  cards([
-    ["Заявки за месяц","42","Пример"],
-    ["Выполнено","31","Пример"],
-    ["Средний чек","3 250 ₽","Пример"],
-    ["Выручка","136 500 ₽","Пример"]
-  ]);
-
-  panel.innerHTML =
-    '<h2>Сводка за месяц</h2>' +
-    '<p class="eyebrow">Условное распределение заявок — данные вымышленные</p>' +
-    [
-      ["Новые",8],
-      ["В работе",14],
-      ["Выполнены",31],
-      ["Отменены",4]
-    ].map(x =>
-      '<div style="margin:17px 0">' +
-      '<div style="display:flex;justify-content:space-between"><b>' +
-      x[0] + '</b><span>' + x[1] + '</span></div>' +
-      '<div style="height:10px;background:#edf0f6;border-radius:8px">' +
-      '<div style="height:10px;width:' + (x[1] / 42 * 100) +
-      '%;background:var(--accent);border-radius:8px"></div></div></div>'
-    ).join("");
-}
-
-function renderSettings() {
-  cards([
-    ["Безопасность","Включена","Пример"],
-    ["Уведомления","Включены","Пример"],
-    ["Резервные копии","—","Не подключено"],
-    ["Интеграции","2","Пример"]
-  ]);
-
-  panel.innerHTML =
-    '<h2>Настройки системы</h2>' +
-    [
-      "Уведомлять о новых заявках",
-      "Уведомлять о сообщениях",
-      "Показывать уведомления в кабинете",
-      "Подтверждать опасные действия"
-    ].map(x =>
-      '<label style="display:flex;justify-content:space-between;padding:14px;border-bottom:1px solid var(--line)">' +
-      x + '<input type="checkbox" checked></label>'
-    ).join("") +
-    '<p class="eyebrow">Переключатели только визуальные и не меняют настройки сайта.</p>';
-}
-
-function renderProfile() {
-  cards([
-    ["Учётная запись","Владелец","Макет"],
-    ["Уровень доступа","Полный","Пример"],
-    ["Двухфакторная защита","—","Требует настройки"],
-    ["Последний вход","Сегодня","Демонстрация"]
-  ]);
-
-  panel.innerHTML =
-    '<h2>Профиль владельца</h2>' +
-    '<div class="detail-grid">' +
-    '<div class="field"><small>Имя профиля</small><strong>Владелец</strong></div>' +
-    '<div class="field"><small>Роль</small><strong>Owner</strong></div>' +
-    '<div class="field"><small>Права</small><strong>Полный доступ</strong></div>' +
-    '<div class="field"><small>Безопасность</small><strong>Настраивается отдельно</strong></div>' +
-    '</div><p class="eyebrow">Демонстрационный профиль, не данные реального пользователя.</p>';
-}
-
-function renderNotifications() {
-  cards([
-    ["Всего событий","12","Пример"],
-    ["Непрочитанные","3","Пример"],
-    ["Важные","1","Пример"],
-    ["За сегодня","5","Пример"]
-  ]);
-
-  panel.innerHTML =
-    '<div class="panel-head"><h2>Центр уведомлений</h2><button class="btn" id="markRead">Отметить всё прочитанным</button></div>' +
-    events.map(e =>
-      '<div style="padding:14px 5px;border-bottom:1px solid var(--line)">● ' +
-      esc(e[1]) +
-      '<small style="display:block;color:var(--muted)">' +
-      esc(e[0]) + ' · ' + esc(e[2]) +
-      '</small></div>'
-    ).join("");
-
-  document.getElementById("markRead").onclick = () => {
-    panel.querySelectorAll("div").forEach(d => {
-      if (d.textContent.startsWith("● ")) {
-        d.textContent = "○ " + d.textContent.slice(2);
-      }
-    });
-
-    ping("В макете уведомления отмечены прочитанными.");
-  };
-}
-
-function go(view) {
-  document.querySelectorAll("[data-view]").forEach(b => {
-    b.classList.toggle("active", b.dataset.view === view);
-  });
-
-  document.getElementById("sectionName").textContent = titles[view];
-  document.getElementById("pageTitle").textContent = titles[view];
-
-  ({
-    overview,
-    orders:renderOrders,
-    messages:renderMessages,
-    payments:renderPayments,
-    users:renderUsers,
-    staff:renderStaff,
-    reports:renderReports,
-    settings:renderSettings,
-    profile:renderProfile,
-    notifications:renderNotifications
-  }[view] || overview)();
-}
-
-document.querySelectorAll("[data-view]").forEach(b => {
-  b.addEventListener("click", () => go(b.dataset.view));
-});
-
-document.getElementById("bell").addEventListener("click", () => go("notifications"));
-
-document.getElementById("closeDetail").addEventListener("click", () => {
-  document.getElementById("detail").classList.remove("open");
-});
-
-document.getElementById("detail").addEventListener("click", e => {
-  if (e.target.id === "detail") {
-    document.getElementById("detail").classList.remove("open");
-  }
-});
-
-document.addEventListener("keydown", e => {
-  if (e.key === "Escape") {
-    document.getElementById("detail").classList.remove("open");
-  }
-});
-
-go("overview");
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Предпросмотр панели управления — Mirror-info</title>
+  <style>
+    :root{--bg:#f4f6fa;--surface:#fff;--ink:#202638;--muted:#748096;--line:#e7eaf0;--accent:#6657d9;--accent-soft:#efedff;--green:#18845b;--amber:#a66a08;--red:#b74450;--nav:#20243a}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+    button,input,select{font:inherit}button{cursor:pointer}.layout{min-height:100vh;display:grid;grid-template-columns:248px 1fr}
+    aside{background:var(--nav);color:#fff;padding:24px 16px}.brand{font-size:19px;font-weight:750;padding:4px 10px 28px}.brand small{display:block;color:#aeb5ca;font-size:12px;font-weight:400;margin-top:3px}
+    .nav-label{color:#8992ad;font-size:11px;text-transform:uppercase;letter-spacing:.1em;padding:14px 10px 7px}.nav button{display:flex;width:100%;gap:11px;align-items:center;border:0;background:transparent;color:#d8dced;text-align:left;padding:11px 12px;border-radius:10px;margin:3px 0}.nav button.active,.nav button:hover{background:#343954;color:#fff}.nav .count{margin-left:auto;background:#514b83;padding:1px 8px;border-radius:20px;font-size:12px}
+    main{min-width:0;padding:28px clamp(16px,3vw,42px) 50px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:25px}.eyebrow{color:var(--muted);font-size:13px}.top h1{margin:3px 0 0;font-size:26px}.actions{display:flex;gap:9px;align-items:center}.btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:9px 13px;border-radius:9px}.demo{font-size:12px;color:#725b13;background:#fff4d7;border:1px solid #f3dfaa;padding:8px 12px;border-radius:9px;margin-bottom:20px}
+    .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:22px}.stat,.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px}.stat{padding:17px}.stat span{color:var(--muted);font-size:13px}.stat strong{display:block;font-size:28px;margin-top:7px}.stat em{font-style:normal;color:var(--green);font-size:12px}
+    .panel{padding:18px}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:15px}.panel h2{font-size:17px;margin:0}.filters{display:flex;gap:8px;flex-wrap:wrap}.filters input,.filters select{border:1px solid var(--line);border-radius:9px;background:#fff;padding:9px 11px;min-width:155px}
+    .tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:15px}.tabs button{border:0;background:transparent;color:var(--muted);padding:8px 11px;border-radius:8px}.tabs button.active{background:var(--accent-soft);color:var(--accent);font-weight:650}
+    .table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:760px}th{text-align:left;color:var(--muted);font-size:12px;font-weight:600;padding:11px 10px;border-bottom:1px solid var(--line)}td{padding:13px 10px;border-bottom:1px solid var(--line);font-size:14px}tbody tr{cursor:pointer}tbody tr:hover{background:#fafaff}.id{color:var(--accent);font-weight:700}.status{display:inline-block;border-radius:30px;padding:4px 9px;font-size:12px;background:#f0f1f5}.s-new{background:#fff1d9;color:var(--amber)}.s-work{background:#eaf0ff;color:#395aa8}.s-done{background:#e5f6ee;color:var(--green)}.s-cancel{background:#fdebed;color:var(--red)}
+    .bottom{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;padding-top:13px}.detail{position:fixed;inset:0;background:#171b2c66;display:none;align-items:center;justify-content:center;padding:18px;z-index:5}.detail.open{display:flex}.dialog{background:#fff;width:min(560px,100%);border-radius:16px;padding:22px;max-height:90vh;overflow:auto}.dialog-head{display:flex;justify-content:space-between;align-items:center}.dialog h2{margin:0}.close{border:0;background:#f1f2f7;border-radius:8px;padding:6px 10px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}.field small{display:block;color:var(--muted);font-size:12px}.field strong{display:block;margin-top:3px;font-size:14px}.dialog-note{background:#f7f7fb;padding:12px;border-radius:10px}.toast{position:fixed;bottom:20px;right:20px;background:#20243a;color:white;padding:12px 16px;border-radius:10px;display:none}
+    @media(max-width:900px){.layout{grid-template-columns:1fr}aside{padding:12px 14px}.brand{padding:4px 8px 10px}.nav{display:flex;overflow:auto;gap:5px}.nav-label{display:none}.nav button{white-space:nowrap;width:auto}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:560px){main{padding:20px 13px}.top{align-items:flex-start;flex-direction:column}.top h1{font-size:23px}.actions{width:100%;justify-content:space-between}.stats{gap:9px}.stat{padding:13px}.stat strong{font-size:24px}.panel{padding:12px}.detail-grid{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="brand">Mirror-info<small>Панель управления · макет</small></div>
+    <div class="nav-label">Рабочее пространство</div>
+    <nav class="nav" aria-label="Разделы панели">
+      <button class="active" data-view="overview">▦ Обзор</button>
+      <button data-view="orders">▤ Заявки <span class="count">3</span></button>
+      <button data-view="messages">✉ Сообщения</button>
+      <button data-view="payments">₸ Платежи</button>
+      <button data-view="users">♙ Пользователи</button>
+      <button data-view="staff">♧ Сотрудники</button>
+      <button data-view="reports">▥ Отчёты</button>
+      <button data-view="settings">⚙ Настройки</button>
+    </nav>
+    <div class="nav-label">Аккаунт</div>
+    <nav class="nav"><button data-view="profile">◉ Профиль владельца</button></nav>
+  </aside>
+  <main>
+    <header class="top">
+      <div><div class="eyebrow">Рабочее пространство / <span id="sectionName">Обзор</span></div><h1 id="pageTitle">Добро пожаловать!</h1></div>
+      <div class="actions"><button class="btn" id="bell">♧ Уведомления <b>3</b></button><button class="btn">Владелец ▾</button></div>
+    </header>
+    <div class="demo">Демонстрационный макет. Здесь только примеры — реальные заявки, сообщения и база данных не подключены. Изменения не сохраняются.</div>
+    <section class="stats">
+      <article class="stat"><span>Всего заявок</span><strong>128</strong><em>↑ 12 за неделю</em></article>
+      <article class="stat"><span>Новые</span><strong>3</strong><em>Требуют внимания</em></article>
+      <article class="stat"><span>В работе</span><strong>14</strong><em>Активные заказы</em></article>
+      <article class="stat"><span>Ожидают оплаты</span><strong>5</strong><em>На проверке</em></article>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2 id="listTitle">Последние заявки</h2><div class="filters"><input id="search" type="search" placeholder="Поиск по имени или №"><select id="statusFilter"><option value="">Все статусы</option><option>Новая</option><option>В работе</option><option>Выполнена</option><option>Отменена</option></select></div></div>
+      <div class="tabs" id="tabs"><button class="active" data-filter="all">Все</button><button data-filter="Новая">Новые</button><button data-filter="В работе">В работе</button><button data-filter="Выполнена">Завершённые</button><button data-filter="Отменена">Архив / отменённые</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Заявка</th><th>Клиент</th><th>Услуга</th><th>Дата</th><th>Сумма</th><th>Статус</th></tr></thead><tbody id="ordersBody"></tbody></table></div>
+      <div class="bottom"><span id="resultCount">Показано 5 из 5</span><span>На странице: 20 ▾</span></div>
+    </section>
+  </main>
+</div>
+<div class="detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+  <div class="dialog"><div class="dialog-head"><h2 id="detailTitle">Заявка</h2><button class="close" id="closeDetail">Закрыть ✕</button></div><div class="detail-grid" id="detailGrid"></div><div class="dialog-note" id="detailComment"></div></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script src="admin-preview.js"></script>
+</body>
+                                                                                                                                      </html>
