@@ -646,12 +646,43 @@ function setupOwnerMenu() {
   const menu = $("ownerDropdown");
   const ownerNotifications = $("ownerNotifications");
 
-  if (!button || !menu) return;
+  if (button && menu) {
+    button.addEventListener("click", event => {
+      event.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+
+    document.addEventListener("click", event => {
+      if (!menu.contains(event.target) && event.target !== button) {
+        menu.hidden = true;
+      }
+    });
+  }
+
+  if (ownerNotifications) {
+    ownerNotifications.addEventListener("click", event => {
+      event.stopPropagation();
+
+      if (menu) menu.hidden = true;
+
+      const panel = $("notificationsPanel");
+
+      if (panel) {
+        panel.style.display = "block";
+        renderNotificationItems();
+      }
+    });
+  }
+}
+
+function renderNotificationItems() {
+  const list = $("notificationsList");
+
   if (!list) return;
 
   list.innerHTML = "";
 
-  notificationRecords.forEach((record, index) => {
+  notificationRecords.forEach(record => {
     const item = document.createElement("div");
 
     item.className = "notification-item";
@@ -676,7 +707,7 @@ function setupOwnerMenu() {
         );
 
         if (order) {
-          openOrder(order.id);
+          openOrder(order);
         }
       }
 
@@ -693,7 +724,6 @@ function setupOwnerMenu() {
     list.textContent = "Новых уведомлений нет.";
   }
 }
-
 function setupNotifications() {
   const bell = $("bell");
 
