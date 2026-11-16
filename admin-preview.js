@@ -585,6 +585,115 @@ function switchView(view) {
     "settings",
     "profile"
   ];
+function renderDemoSection(view) {
+  let container = $("sectionContent");
+
+  if (!container) {
+    container = document.createElement("section");
+    container.id = "sectionContent";
+    container.className = "panel";
+
+    const mainElement = document.querySelector("main");
+    if (!mainElement) return;
+
+    const orderPanel = mainElement.querySelector(".panel");
+    if (orderPanel) {
+      mainElement.insertBefore(container, orderPanel);
+    } else {
+      mainElement.appendChild(container);
+    }
+  }
+
+  const section = demoData[view];
+
+  container.style.display = "";
+  container.innerHTML = "";
+
+  const heading = document.createElement("div");
+  heading.className = "panel-head";
+
+  const title = document.createElement("h2");
+  title.textContent = section ? section.title : (titles[view] || "Раздел");
+
+  heading.appendChild(title);
+  container.appendChild(heading);
+
+  if (!section) {
+    const message = document.createElement("p");
+    message.textContent = "Раздел пока не настроен.";
+    container.appendChild(message);
+    return;
+  }
+
+  if (!Array.isArray(section.rows) || !section.rows.length) {
+    const message = document.createElement("p");
+    message.textContent = "В этом разделе пока нет записей.";
+    container.appendChild(message);
+    return;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-wrap";
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+
+  section.columns.forEach(header => {
+    const th = document.createElement("th");
+    th.textContent = header;
+    headerRow.appendChild(th);
+  });
+
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+
+  section.rows.forEach((record, index) => {
+    const row = document.createElement("tr");
+    row.style.cursor = "pointer";
+
+    record.forEach(value => {
+      const cell = document.createElement("td");
+      cell.textContent = value == null ? "—" : String(value);
+      row.appendChild(cell);
+    });
+
+    row.addEventListener("click", () => {
+      openDetails(
+        section.columns[0] || "Запись",
+        section.columns.map((header, i) => [
+          header,
+          record[i] || "—"
+        ]),
+        getRelatedName(view, record),
+        getRecordKey(view, index),
+        null,
+        view
+      );
+    });
+
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  container.appendChild(wrapper);
+}
+
+function switchView(view) {
+  const knownViews = [
+    "overview",
+    "orders",
+    "messages",
+    "payments",
+    "users",
+    "staff",
+    "reports",
+    "settings",
+    "profile"
+  ];
 
   if (!knownViews.includes(view)) {
     view = "overview";
@@ -595,35 +704,42 @@ function switchView(view) {
       "active",
       button.dataset.view === view
     );
-  });
 
-  document.querySelectorAll(".view-panel").forEach(panel => {
-    panel.hidden = panel.id !== view + "View";
+    button.onclick = () => switchView(button.dataset.view);
   });
 
   const title = $("pageTitle");
-
   if (title) {
     title.textContent = titles[view] || "Обзор";
   }
 
   const breadcrumb = $("breadcrumb");
-
   if (breadcrumb) {
     breadcrumb.textContent = titles[view] || "Обзор";
   }
 
-  if (view === "orders") {
-    renderOrders();
-  } else if (view !== "overview") {
-    renderDemoSection(view);
+  if (stats) {
+    stats.style.display = view === "overview" ? "" : "none";
   }
 
-  document.querySelectorAll("[data-view]").forEach(button => {
-    button.onclick = () => switchView(button.dataset.view);
-  });
-}
+  if (ordersPanel) {
+    ordersPanel.style.display =
+      view === "overview" || view === "orders" ? "" : "none";
+  }
 
+  const container = $("sectionContent");
+
+  if (container) {
+    container.style.display =
+      view === "overview" || view === "orders" ? "none" : "";
+  }
+
+  if (view === "overview" || view === "orders") {
+    renderOrders();
+  } else {
+    renderDemoSection(view);
+  }
+}
 function setupOwnerMenu() {
 const button = $("ownerMenu");
 const menu = $("ownerDropdown");
