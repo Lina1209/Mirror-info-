@@ -623,8 +623,6 @@ function switchView(view) {
 }
 
 function setupOwnerMenu() {
-
-function setupOwnerMenu() {
   const button = $("ownerMenu");
   const menu = $("ownerDropdown");
   const ownerNotifications = $("ownerNotifications");
