@@ -1,163 +1,202 @@
-// Mirror-info — демонстрационная панель управления.
+// Mirror-info — интерактивный демонстрационный макет.
 // Только тестовые данные. Реальная база и API не подключены.
-
 "use strict";
 
 const demoOrders = [
-  {
-    id: "MI-2026-001",
-    name: "Анна Иванова",
-    email: "anna@example.com",
-    service: "Перевод документа",
-    date: "16.11.2026",
-    amount: "4 500 ₽",
-    status: "Новая",
-    comment: "Клиент ожидает подтверждения заявки."
-  },
-  {
-    id: "MI-2026-002",
-    name: "Мария Петрова",
-    email: "maria@example.com",
-    service: "Редактирование текста",
-    date: "15.11.2026",
-    amount: "2 800 ₽",
-    status: "В работе",
-    comment: "Заявка передана специалисту."
-  },
-  {
-    id: "MI-2026-003",
-    name: "Елена Смирнова",
-    email: "elena@example.com",
-    service: "Конвертация файла",
-    date: "14.11.2026",
-    amount: "1 100 ₽",
-    status: "Выполнена",
-    comment: "Демонстрационный заказ завершён."
-  },
-  {
-    id: "MI-2026-004",
-    name: "Ольга Кузнецова",
-    email: "olga@example.com",
-    service: "Перевод документа",
-    date: "13.11.2026",
-    amount: "3 600 ₽",
-    status: "Отменена",
-    comment: "Демонстрационная отменённая заявка."
-  },
-  {
-    id: "MI-2026-005",
-    name: "Ирина Соколова",
-    email: "irina@example.com",
-    service: "Редактирование текста",
-    date: "12.11.2026",
-    amount: "2 200 ₽",
-    status: "Новая",
-    comment: "Ожидается проверка данных."
-  }
+  {id:"MI-2026-001",name:"Анна Иванова",email:"anna@example.com",service:"Перевод документа",date:"16.11.2026",amount:"4 500 ₽",status:"Новая",comment:"Ожидает подтверждения заявки."},
+  {id:"MI-2026-002",name:"Мария Петрова",email:"maria@example.com",service:"Редактирование текста",date:"15.11.2026",amount:"2 800 ₽",status:"В работе",comment:"Заявка передана специалисту."},
+  {id:"MI-2026-003",name:"Елена Смирнова",email:"elena@example.com",service:"Конвертация файла",date:"14.11.2026",amount:"1 100 ₽",status:"Выполнена",comment:"Заказ завершён."},
+  {id:"MI-2026-004",name:"Ольга Кузнецова",email:"olga@example.com",service:"Перевод документа",date:"13.11.2026",amount:"3 600 ₽",status:"Отменена",comment:"Заявка отменена."},
+  {id:"MI-2026-005",name:"Ирина Соколова",email:"irina@example.com",service:"Редактирование текста",date:"12.11.2026",amount:"2 200 ₽",status:"Новая",comment:"Ожидается проверка данных."}
 ];
 
-const ordersBody = document.getElementById("ordersBody");
-const searchInput = document.getElementById("search");
-const statusFilter = document.getElementById("statusFilter");
-const resultCount = document.getElementById("resultCount");
-const detail = document.getElementById("detail");
-const detailTitle = document.getElementById("detailTitle");
-const detailGrid = document.getElementById("detailGrid");
-const detailComment = document.getElementById("detailComment");
-const toast = document.getElementById("toast");
+const demoData = {
+  messages: {
+    title:"Сообщения",
+    columns:["Клиент","Тема","Дата","Статус"],
+    rows:[
+      ["Анна Иванова","Вопрос по заявке MI-2026-001","16.11.2026","Новое"],
+      ["Мария Петрова","Уточнение по документу","15.11.2026","Отвечено"],
+      ["Елена Смирнова","Благодарность","14.11.2026","Закрыто"]
+    ]
+  },
+  payments: {
+    title:"Платежи",
+    columns:["№ платежа","Клиент","Сумма","Статус"],
+    rows:[
+      ["PAY-001","Анна Иванова","4 500 ₽","Ожидает оплаты"],
+      ["PAY-002","Мария Петрова","2 800 ₽","Оплачен"],
+      ["PAY-003","Елена Смирнова","1 100 ₽","Оплачен"]
+    ]
+  },
+  users: {
+    title:"Пользователи",
+    columns:["Имя","Электронная почта","Регистрация","Статус"],
+    rows:[
+      ["Анна Иванова","anna@example.com","16.11.2026","Активен"],
+      ["Мария Петрова","maria@example.com","15.11.2026","Активен"],
+      ["Елена Смирнова","elena@example.com","14.11.2026","Активен"]
+    ]
+  },
+  staff: {
+    title:"Сотрудники",
+    columns:["Сотрудник","Роль","Назначено заявок","Статус"],
+    rows:[
+      ["Администратор","Senior admin","8","Активен"],
+      ["Специалист 1","Order admin","5","Активен"],
+      ["Поддержка","Support admin","3","Активен"]
+    ]
+  },
+  reports: {
+    title:"Отчёты",
+    columns:["Показатель","Значение","Период"],
+    rows:[
+      ["Всего заявок","128","За всё время"],
+      ["Новые заявки","3","Сегодня"],
+      ["Завершённые","86","За всё время"],
+      ["Ожидают оплаты","5","Сейчас"]
+    ]
+  },
+  settings: {
+    title:"Настройки",
+    columns:["Параметр","Значение"],
+    rows:[
+      ["Название проекта","Mirror-info"],
+      ["Уведомления","Включены в макете"],
+      ["Язык интерфейса","Русский"],
+      ["Режим","Демонстрационный"]
+    ]
+  },
+  profile: {
+    title:"Профиль владельца",
+    columns:["Параметр","Информация"],
+    rows:[
+      ["Роль","Владелец"],
+      ["Доступ","Полный"],
+      ["Проект","Mirror-info"],
+      ["Режим","Демонстрационный"]
+    ]
+  }
+};
+
+const $ = id => document.getElementById(id);
+
+const main = document.querySelector("main");
+const stats = document.querySelector(".stats");
+const ordersPanel = document.querySelector(".panel");
+const sectionName = $("sectionName");
+const pageTitle = $("pageTitle");
+const toast = $("toast");
+const detail = $("detail");
 
 let activeTab = "all";
 
-function escapeHTML(value) {
-  return String(value).replace(/[&<>"']/g, character => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;"
-  })[character]);
+const titles = {
+  overview:"Обзор",
+  orders:"Заявки",
+  messages:"Сообщения",
+  payments:"Платежи",
+  users:"Пользователи",
+  staff:"Сотрудники",
+  reports:"Отчёты",
+  settings:"Настройки",
+  profile:"Профиль владельца"
+};
+
+function showToast(message) {
+  if (!toast) return;
+  toast.textContent = message;
+  toast.style.display = "block";
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => {
+    toast.style.display = "none";
+  }, 2500);
 }
 
-function getStatusClass(status) {
-  const classes = {
-    "Новая": "s-new",
-    "В работе": "s-work",
-    "Выполнена": "s-done",
-    "Отменена": "s-cancel"
-  };
-
-  return classes[status] || "";
+function statusClass(status) {
+  return {
+    "Новая":"s-new",
+    "В работе":"s-work",
+    "Выполнена":"s-done",
+    "Отменена":"s-cancel"
+  }[status] || "";
 }
 
 function renderOrders() {
-  if (!ordersBody) return;
+  const body = $("ordersBody");
+  if (!body) return;
 
-  const query = (searchInput?.value || "").trim().toLowerCase();
-  const selectedStatus = statusFilter?.value || "";
+  const query = ($("search")?.value || "").trim().toLowerCase();
+  const selectedStatus = $("statusFilter")?.value || "";
 
   const filtered = demoOrders.filter(order => {
-    const matchesQuery = [
-      order.id,
-      order.name,
-      order.email,
-      order.service
+    const matchesText = [
+      order.id, order.name, order.email, order.service
     ].some(value => value.toLowerCase().includes(query));
 
-    const matchesStatus =
-      !selectedStatus || order.status === selectedStatus;
+    const matchesStatus = !selectedStatus || order.status === selectedStatus;
+    const matchesTab = activeTab === "all" || order.status === activeTab;
 
-    const matchesTab =
-      activeTab === "all" || order.status === activeTab;
-
-    return matchesQuery && matchesStatus && matchesTab;
+    return matchesText && matchesStatus && matchesTab;
   });
 
-  ordersBody.innerHTML = "";
+  body.replaceChildren();
 
   filtered.forEach(order => {
     const row = document.createElement("tr");
 
-    row.innerHTML = `
-      <td><span class="id">${escapeHTML(order.id)}</span></td>
-      <td>${escapeHTML(order.name)}</td>
-      <td>${escapeHTML(order.service)}</td>
-      <td>${escapeHTML(order.date)}</td>
-      <td>${escapeHTML(order.amount)}</td>
-      <td>
-        <span class="status ${getStatusClass(order.status)}">
-          ${escapeHTML(order.status)}
-        </span>
-      </td>
-    `;
+    [
+      order.id,
+      order.name,
+      order.service,
+      order.date,
+      order.amount
+    ].forEach((value, index) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      if (index === 0) {
+        const span = document.createElement("span");
+        span.className = "id";
+        span.textContent = value;
+        cell.replaceChildren(span);
+      }
+      row.appendChild(cell);
+    });
 
-    row.addEventListener("click", () => openOrder(order.id));
-    ordersBody.appendChild(row);
+    const statusCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "status " + statusClass(order.status);
+    badge.textContent = order.status;
+    statusCell.appendChild(badge);
+    row.appendChild(statusCell);
+
+    row.addEventListener("click", () => openOrder(order));
+    body.appendChild(row);
   });
 
-  if (resultCount) {
-    resultCount.textContent =
+  if ($("resultCount")) {
+    $("resultCount").textContent =
       `Показано ${filtered.length} из ${demoOrders.length}`;
   }
 }
 
-function openOrder(orderId) {
-  const order = demoOrders.find(item => item.id === orderId);
-  if (!order || !detail) return;
+function openOrder(order) {
+  if (!detail) return;
 
-  detailTitle.textContent = `Заявка ${order.id}`;
+  $("detailTitle").textContent = "Заявка " + order.id;
+  const grid = $("detailGrid");
+  grid.replaceChildren();
 
   const fields = [
-    ["Клиент", order.name],
-    ["Электронная почта", order.email],
-    ["Услуга", order.service],
-    ["Дата", order.date],
-    ["Стоимость", order.amount],
-    ["Статус", order.status]
+    ["Клиент",order.name],
+    ["Электронная почта",order.email],
+    ["Услуга",order.service],
+    ["Дата",order.date],
+    ["Стоимость",order.amount],
+    ["Статус",order.status]
   ];
 
-  detailGrid.innerHTML = "";
-
-  fields.forEach(([label, value]) => {
+  fields.forEach(([label,value]) => {
     const field = document.createElement("div");
     field.className = "field";
 
@@ -167,11 +206,11 @@ function openOrder(orderId) {
     const strong = document.createElement("strong");
     strong.textContent = value;
 
-    field.append(small, strong);
-    detailGrid.appendChild(field);
+    field.append(small,strong);
+    grid.appendChild(field);
   });
 
-  detailComment.textContent = order.comment;
+  $("detailComment").textContent = order.comment;
   detail.classList.add("open");
 }
 
@@ -179,36 +218,131 @@ function closeOrder() {
   detail?.classList.remove("open");
 }
 
-function showToast(message) {
-  if (!toast) return;
+function renderDemoSection(view) {
+  const data = demoData[view];
+  if (!data) return;
 
-  toast.textContent = message;
-  toast.style.display = "block";
+  let section = $("otherSection");
 
-  window.clearTimeout(showToast.timer);
+  if (!section) {
+    section = document.createElement("section");
+    section.id = "otherSection";
+    section.className = "panel";
+    main.appendChild(section);
+  }
 
-  showToast.timer = window.setTimeout(() => {
-    toast.style.display = "none";
-  }, 2500);
+  section.replaceChildren();
+
+  const heading = document.createElement("div");
+  heading.className = "panel-head";
+
+  const title = document.createElement("h2");
+  title.textContent = data.title;
+  heading.appendChild(title);
+  section.appendChild(heading);
+
+  const note = document.createElement("p");
+  note.style.color = "#748096";
+  note.style.fontSize = "13px";
+  note.textContent = "Демонстрационные данные. Подключение реальных функций будет выполнено отдельно.";
+  section.appendChild(note);
+
+  const wrap = document.createElement("div");
+  wrap.className = "table-wrap";
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+
+  data.columns.forEach(column => {
+    const th = document.createElement("th");
+    th.textContent = column;
+    headRow.appendChild(th);
+  });
+
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+
+  data.rows.forEach(values => {
+    const row = document.createElement("tr");
+
+    values.forEach(value => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    });
+
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  section.appendChild(wrap);
 }
 
-searchInput?.addEventListener("input", renderOrders);
-statusFilter?.addEventListener("change", renderOrders);
+function switchView(view) {
+  if (!titles[view]) return;
+
+  document.querySelectorAll("[data-view]").forEach(button => {
+    button.classList.toggle("active", button.dataset.view === view);
+  });
+
+  sectionName.textContent = titles[view];
+  pageTitle.textContent =
+    view === "overview" ? "Добро пожаловать!" : titles[view];
+
+  const isOrders = view === "orders" || view === "overview";
+
+  stats.style.display = isOrders ? "grid" : "none";
+  ordersPanel.style.display = isOrders ? "block" : "none";
+
+  const otherSection = $("otherSection");
+  if (otherSection) otherSection.remove();
+
+  if (demoData[view]) {
+    renderDemoSection(view);
+  }
+
+  if (view === "overview" || view === "orders") {
+    activeTab = "all";
+    document.querySelectorAll(".tabs button").forEach(button => {
+      button.classList.toggle(
+        "active",
+        button.dataset.filter === "all"
+      );
+    });
+    if ($("search")) $("search").value = "";
+    if ($("statusFilter")) $("statusFilter").value = "";
+    renderOrders();
+  }
+
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+document.querySelectorAll("[data-view]").forEach(button => {
+  button.addEventListener("click", () => {
+    switchView(button.dataset.view);
+  });
+});
+
+$("search")?.addEventListener("input", renderOrders);
+$("statusFilter")?.addEventListener("change", renderOrders);
 
 document.querySelectorAll(".tabs button").forEach(button => {
   button.addEventListener("click", () => {
+    activeTab = button.dataset.filter || "all";
+
     document.querySelectorAll(".tabs button").forEach(item => {
-      item.classList.remove("active");
+      item.classList.toggle("active", item === button);
     });
 
-    button.classList.add("active");
-    activeTab = button.dataset.filter || "all";
     renderOrders();
   });
 });
 
-document.getElementById("closeDetail")
-  ?.addEventListener("click", closeOrder);
+$("closeDetail")?.addEventListener("click", closeOrder);
 
 detail?.addEventListener("click", event => {
   if (event.target === detail) closeOrder();
@@ -218,41 +352,9 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape") closeOrder();
 });
 
-document.getElementById("bell")
-  ?.addEventListener("click", () => {
-    showToast("Здесь будет центр уведомлений.");
-  });
-
-document.querySelectorAll("[data-view]").forEach(button => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll("[data-view]").forEach(item => {
-      item.classList.remove("active");
-    });
-
-    button.classList.add("active");
-
-    const view = button.dataset.view;
-    const titles = {
-      overview: "Обзор",
-      orders: "Заявки",
-      messages: "Сообщения",
-      payments: "Платежи",
-      users: "Пользователи",
-      staff: "Сотрудники",
-      reports: "Отчёты",
-      settings: "Настройки",
-      profile: "Профиль владельца"
-    };
-
-    const title = titles[view] || "Раздел";
-
-    document.getElementById("sectionName").textContent = title;
-    document.getElementById("pageTitle").textContent = title;
-
-    if (view !== "overview" && view !== "orders") {
-      showToast(`Раздел «${title}» будет подключён на следующем этапе.`);
-    }
-  });
+$("bell")?.addEventListener("click", () => {
+  showToast("У вас 3 демонстрационных уведомления.");
 });
 
 renderOrders();
+switchView("overview");
