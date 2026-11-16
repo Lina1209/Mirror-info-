@@ -44,8 +44,8 @@ const demoData = {
     title:"Сотрудники",
     columns:["Сотрудник","Роль","Назначено заявок","Статус"],
     rows:[
-      ["Администратор","Senior admin","8","Активен"],
-      ["Специалист 1","Order admin","5","Активен"],
+      ["Администратор","Старший администратор","8","Активен"],
+      ["Специалист 1","Администратор заказов","5","Активен"],
       ["Поддержка","Support admin","3","Активен"]
     ]
   },
@@ -91,6 +91,36 @@ const detail = $("detail");
 
 let activeTab = "all";
 
+const viewedRecords = new Set();
+const orderAssignments = {};
+
+const orderHistory = {
+  "MI-2026-001":[
+    {text:"Заявка создана",when:"16.11.2026"}
+  ]
+};
+
+const notificationRecords = [
+  {
+    key:"order:MI-2026-001",
+    title:"📋 Новая заявка",
+    description:"Поступила новая заявка от Анны Ивановой.",
+    view:"orders"
+  },
+  {
+    key:"message:0",
+    title:"✉ Новое сообщение",
+    description:"Клиент отправил новое сообщение.",
+    view:"messages"
+  },
+  {
+    key:"payment:0",
+    title:"₸ Ожидает оплаты",
+    description:"Есть платёж, ожидающий оплаты.",
+    view:"payments"
+  }
+];
+
 const titles = {
   overview:"Обзор",
   orders:"Заявки",
@@ -104,21 +134,30 @@ const titles = {
 };
 
 function showToast(message) {
-  if (!toast) return;
+  if (!toast) {
+    alert(message);
+    return;
+  }
+
   toast.textContent = message;
   toast.style.display = "block";
+
   clearTimeout(showToast.timer);
+
   showToast.timer = setTimeout(() => {
     toast.style.display = "none";
-  }, 2500);
+  },2500);
 }
 
-function makeButton(label, action) {
+function makeButton(label,action) {
   const button = document.createElement("button");
+
   button.className = "btn";
   button.type = "button";
   button.textContent = label;
-  button.addEventListener("click", action);
+
+  button.addEventListener("click",action);
+
   return button;
 }
 
@@ -131,12 +170,87 @@ function statusClass(status) {
   }[status] || "";
 }
 
-function openDetails(title, fields, relatedName) {
+function bellBadge() {
+  const bell = $("bell");
+  if (!bell) return null;
+
+  let badge =
+    bell.querySelector("[data-unread-count]") ||
+    bell.querySelector("b");
+
+  if (!badge) {
+    badge = document.createElement("b");
+    bell.appendChild(badge);
+  }
+
+  badge.dataset.unreadCount = "true";
+  badge.style.marginLeft = "5px";
+
+  return badge;
+}
+
+function updateNotificationCount() {
+  const unread = notificationRecords.filter(item =>
+    !viewedRecords.has(item.key)
+  ).length;
+
+  const badge = bellBadge();
+
+  if (badge) {
+    badge.textContent = String(unread);
+  }
+
+  const bell = $("bell");
+
+  if (bell) {
+    bell.setAttribute(
+      "aria-label",
+      "Уведомления. Непрочитанных: " + unread
+    );
+
+    bell.title = "Непрочитанных уведомлений: " + unread;
+  }
+}
+
+function markViewed(recordKey,view) {
+  if (recordKey) {
+    viewedRecords.add(recordKey);
+  }
+
+  if (view === "messages" && recordKey) {
+    const index = Number(recordKey.split(":")[1]);
+
+    if (demoData.messages.rows[index]) {
+      demoData.messages.rows[index][3] = "Просмотрено";
+    }
+  }
+
+  updateNotificationCount();
+  renderNotificationItems();
+
+  showToast("Запись отмечена как просмотренная.");
+}
+
+function addHistory(orderId,text) {
+  if (!orderHistory[orderId]) {
+    orderHistory[orderId] = [];
+  }
+
+  orderHistory[orderId].push({
+    text,
+    when:new Date().toLocaleString("ru-RU")
+  });
+  }
+function openDetails(title,fields,relatedName,recordKey,order,view) {
   if (!detail) return;
 
-  $("detailTitle").textContent = title;
-
+  const titleElement = $("detailTitle");
   const grid = $("detailGrid");
+  const note = $("detailComment");
+
+  if (!titleElement || !grid || !note) return;
+
+  titleElement.textContent = title;
   grid.replaceChildren();
 
   fields.forEach(([label,value]) => {
@@ -147,78 +261,173 @@ function openDetails(title, fields, relatedName) {
     small.textContent = label;
 
     const strong = document.createElement("strong");
-    strong.textContent = value;
+    strong.textContent = value == null ? "—" : String(value);
 
     field.append(small,strong);
     grid.appendChild(field);
   });
 
-  const note = $("detailComment");
   note.replaceChildren();
 
   const description = document.createElement("p");
-  description.textContent = "Демонстрационная карточка. Данные не сохраняются.";
+
+  description.textContent = order
+    ? order.comment
+    : "Демонстрационная карточка. Изменения существуют только до перезагрузки страницы.";
+
   note.appendChild(description);
 
-  if (relatedName) {
-    const related = demoOrders.find(order =>
-      order.name === relatedName
-    );
+  if (order) {
+    const assignment = document.createElement("p");
 
-    if (related) {
-      note.appendChild(makeButton(
-        "Открыть связанную заявку " + related.id,
-        () => openOrder(related)
-      ));
+    assignment.textContent =
+      "Ответственный: " +
+      (orderAssignments[order.id] || "Не назначен");
+
+    note.appendChild(assignment);
+
+    const historyTitle = document.createElement("h3");
+    historyTitle.textContent = "История действий";
+    note.appendChild(historyTitle);
+
+    const historyList = document.createElement("ul");
+
+    (orderHistory[order.id] || []).forEach(item => {
+      const li = document.createElement("li");
+
+      li.textContent = item.text + " — " + item.when;
+
+      historyList.appendChild(li);
+    });
+
+    note.appendChild(historyList);
+
+    if (order.status === "Новая") {
+      note.appendChild(
+        makeButton("Принять в работу",() => acceptOrder(order))
+      );
     }
   }
 
-  note.appendChild(makeButton(
-    "Отметить как просмотренное",
-    () => showToast("Запись просмотрена в демонстрационном режиме.")
-  ));
+  if (relatedName) {
+    const related = demoOrders.find(item =>
+      item.name === relatedName
+    );
 
-  note.appendChild(makeButton(
-    "Закрыть карточку",
-    closeOrder
-  ));
+    if (related) {
+      note.appendChild(
+        makeButton(
+          "Открыть связанную заявку " + related.id,
+          () => openOrder(related)
+        )
+      );
+    }
+  }
+
+  if (recordKey) {
+    const alreadyViewed = viewedRecords.has(recordKey);
+
+    note.appendChild(
+      makeButton(
+        alreadyViewed
+          ? "Уже просмотрено"
+          : "Отметить как просмотренное",
+        () => {
+          markViewed(recordKey,view);
+
+          openDetails(
+            title,
+            fields,
+            relatedName,
+            recordKey,
+            order,
+            view
+          );
+        }
+      )
+    );
+  }
+
+  note.appendChild(
+    makeButton("Закрыть карточку",closeOrder)
+  );
 
   detail.classList.add("open");
 }
 
+function acceptOrder(order) {
+  if (order.status !== "Новая") {
+    showToast("Эта заявка уже принята или обработана.");
+    return;
+  }
+
+  order.status = "В работе";
+
+  orderAssignments[order.id] = "Владелец (демо)";
+
+  addHistory(
+    order.id,
+    "Принято в работу владельцем (демо)"
+  );
+
+  renderOrders();
+  openOrder(order);
+
+  showToast("Заявка принята в работу.");
+}
+
 function openOrder(order) {
-  openDetails("Заявка " + order.id,[
-    ["Номер заявки",order.id],
-    ["Клиент",order.name],
-    ["Электронная почта",order.email],
-    ["Услуга",order.service],
-    ["Дата",order.date],
-    ["Стоимость",order.amount],
-    ["Статус",order.status],
-    ["Комментарий",order.comment]
-  ],order.name);
+  openDetails(
+    "Заявка " + order.id,
+    [
+      ["Номер заявки",order.id],
+      ["Клиент",order.name],
+      ["Электронная почта",order.email],
+      ["Услуга",order.service],
+      ["Дата",order.date],
+      ["Стоимость",order.amount],
+      ["Статус",order.status],
+      ["Комментарий",order.comment]
+    ],
+    null,
+    "order:" + order.id,
+    order,
+    "orders"
+  );
 }
 
 function closeOrder() {
-  detail?.classList.remove("open");
+  if (detail) {
+    detail.classList.remove("open");
+  }
 }
 
 function renderOrders() {
   const body = $("ordersBody");
   if (!body) return;
 
-  const query = ($("search")?.value || "").trim().toLowerCase();
+  const query = ($("search")?.value || "")
+    .trim()
+    .toLowerCase();
+
   const selectedStatus = $("statusFilter")?.value || "";
 
   const filtered = demoOrders.filter(order => {
     const matchesText = [
-      order.id,order.name,order.email,order.service
-    ].some(value => value.toLowerCase().includes(query));
+      order.id,
+      order.name,
+      order.email,
+      order.service
+    ].some(value =>
+      value.toLowerCase().includes(query)
+    );
 
-    const matchesStatus = !selectedStatus ||
+    const matchesStatus =
+      !selectedStatus ||
       order.status === selectedStatus;
 
-    const matchesTab = activeTab === "all" ||
+    const matchesTab =
+      activeTab === "all" ||
       order.status === activeTab;
 
     return matchesText && matchesStatus && matchesTab;
@@ -237,122 +446,147 @@ function renderOrders() {
       order.amount
     ].forEach((value,index) => {
       const cell = document.createElement("td");
-      cell.textContent = value;
 
       if (index === 0) {
         const span = document.createElement("span");
+
         span.className = "id";
         span.textContent = value;
-        cell.replaceChildren(span);
+
+        cell.appendChild(span);
+      } else {
+        cell.textContent = value;
       }
 
       row.appendChild(cell);
     });
 
-    const cell = document.createElement("td");
+    const statusCell = document.createElement("td");
     const badge = document.createElement("span");
-    badge.className = "status " + statusClass(order.status);
-    badge.textContent = order.status;
-    cell.appendChild(badge);
-    row.appendChild(cell);
 
-    row.addEventListener("click",() => openOrder(order));
+    badge.className =
+      "status " + statusClass(order.status);
+
+    badge.textContent = order.status;
+
+    statusCell.appendChild(badge);
+    row.appendChild(statusCell);
+
+    row.style.cursor = "pointer";
+
+    row.addEventListener("click",() => {
+      openOrder(order);
+    });
+
     body.appendChild(row);
   });
 
   if ($("resultCount")) {
     $("resultCount").textContent =
-      `Показано ${filtered.length} из ${demoOrders.length}`;
+      "Показано " + filtered.length +
+      " из " + demoOrders.length;
   }
 }
 
-function renderDemoSection(view) {
-  const data = demoData[view];
-  if (!data) return;
-
-  let section = $("otherSection");
-
-  if (!section) {
-    section = document.createElement("section");
-    section.id = "otherSection";
-    section.className = "panel";
-    main.appendChild(section);
+function getRelatedName(view,values) {
+  if (view === "messages" || view === "users") {
+    return values[0];
   }
 
-  section.replaceChildren();
+  if (view === "payments") {
+    return values[1];
+  }
 
-  const heading = document.createElement("div");
-  heading.className = "panel-head";
+  return null;
+}
 
-  const title = document.createElement("h2");
-  title.textContent = data.title;
-  heading.appendChild(title);
-  section.appendChild(heading);
+function getRecordKey(view,index) {
+  if (view === "messages") {
+    return "message:" + index;
+  }
 
-  const note = document.createElement("p");
-  note.style.color = "#748096";
-  note.textContent =
-    "Нажмите на любую строку, чтобы открыть подробную карточку.";
-  section.appendChild(note);
+  if (view === "payments") {
+    return "payment:" + index;
+  }
 
-  const wrap = document.createElement("div");
-  wrap.className = "table-wrap";
+  return null;
+    }
+function renderDemoSection(view) {
+  const container = $("sectionContent");
+  if (!container) return;
 
-  const table = document.createElement("table");
-  const thead = document.createElement("thead");
-  const headRow = document.createElement("tr");
+  const section = demoData[view];
 
-  data.columns.forEach(column => {
-    const th = document.createElement("th");
-    th.textContent = column;
-    headRow.appendChild(th);
-  });
+  if (!section) {
+    container.innerHTML = "<p>Раздел пока не настроен.</p>";
+    return;
+  }
 
-  thead.appendChild(headRow);
-  table.appendChild(thead);
+  let html = '<div class="section-table">';
 
-  const tbody = document.createElement("tbody");
+  if (Array.isArray(section.rows) && section.rows.length) {
+    html += '<div class="table-wrap"><table><thead><tr>';
 
-  data.rows.forEach(values => {
-    const row = document.createElement("tr");
+    section.headers.forEach(header => {
+      html += "<th>" + header + "</th>";
+    });
+
+    html += "</tr></thead><tbody>";
+
+    section.rows.forEach((row, index) => {
+      html += '<tr data-row="' + index + '">';
+
+      row.forEach(value => {
+        html += "<td>" + value + "</td>";
+      });
+
+      html += "</tr>";
+    });
+
+    html += "</tbody></table></div>";
+  } else {
+    html += "<p>В этом разделе пока нет записей.</p>";
+  }
+
+  html += "</div>";
+  container.innerHTML = html;
+
+  container.querySelectorAll("tbody tr").forEach((row, index) => {
     row.style.cursor = "pointer";
 
-    values.forEach(value => {
-      const cell = document.createElement("td");
-      cell.textContent = value;
-      row.appendChild(cell);
-    });
-
-    row.addEventListener("click",() => {
-      const fields = data.columns.map((column,index) =>
-        [column,values[index]]
-      );
-
-      const relatedName = view === "messages" ||
-        view === "payments" || view === "users"
-        ? values[0] === "PAY-001" ? "Анна Иванова" :
-          values[0] === "PAY-002" ? "Мария Петрова" :
-          values[0] === "PAY-003" ? "Елена Смирнова" :
-          values[0]
-        : null;
-
+    row.addEventListener("click", () => {
+      const record = section.rows[index];
       openDetails(
-        data.title + " — " + values[0],
-        fields,
-        relatedName
+        section.headers[0] || "Запись",
+        section.headers.map((header, i) => [
+          header,
+          record[i] || "—"
+        ]),
+        null,
+        getRecordKey(view, index),
+        null,
+        view
       );
     });
-
-    tbody.appendChild(row);
   });
-
-  table.appendChild(tbody);
-  wrap.appendChild(table);
-  section.appendChild(wrap);
 }
 
 function switchView(view) {
-  if (!titles[view]) return;
+  const knownViews = [
+    "overview",
+    "orders",
+    "messages",
+    "payments",
+    "users",
+    "staff",
+    "reports",
+    "settings",
+    "profile"
+  ];
+
+  if (!knownViews.includes(view)) {
+    view = "overview";
+  }
 
   document.querySelectorAll("[data-view]").forEach(button => {
     button.classList.toggle(
@@ -361,144 +595,105 @@ function switchView(view) {
     );
   });
 
-  sectionName.textContent = titles[view];
-  pageTitle.textContent =
-    view === "overview" ? "Добро пожаловать!" : titles[view];
+  document.querySelectorAll(".view-panel").forEach(panel => {
+    panel.hidden = panel.id !== view + "View";
+  });
 
-  const isOrders = view === "orders" || view === "overview";
+  const title = $("pageTitle");
 
-  stats.style.display = isOrders ? "grid" : "none";
-  ordersPanel.style.display = isOrders ? "block" : "none";
-
-  $("otherSection")?.remove();
-
-  if (demoData[view]) renderDemoSection(view);
-
-  if (isOrders) {
-    activeTab = "all";
-
-    document.querySelectorAll(".tabs button").forEach(button => {
-      button.classList.toggle(
-        "active",
-        button.dataset.filter === "all"
-      );
-    });
-
-    if ($("search")) $("search").value = "";
-    if ($("statusFilter")) $("statusFilter").value = "";
-
-    renderOrders();
+  if (title) {
+    title.textContent = titles[view] || "Обзор";
   }
 
-  window.scrollTo({top:0,behavior:"smooth"});
+  const breadcrumb = $("breadcrumb");
+
+  if (breadcrumb) {
+    breadcrumb.textContent = titles[view] || "Обзор";
+  }
+
+  if (view === "orders") {
+    renderOrders();
+  } else if (view !== "overview") {
+    renderDemoSection(view);
+  }
+
+  document.querySelectorAll("[data-view]").forEach(button => {
+    button.onclick = () => switchView(button.dataset.view);
+  });
 }
 
 function setupOwnerMenu() {
-  const ownerButton = document.querySelector(".actions .btn:last-child");
-  if (!ownerButton) return;
+  const button = $("ownerMenu");
+  const menu = $("ownerDropdown");
 
-  ownerButton.type = "button";
-  ownerButton.setAttribute("aria-expanded","false");
+  if (!button || !menu) return;
 
-  const menu = document.createElement("div");
-  menu.id = "ownerMenu";
-
-  Object.assign(menu.style,{
-    display:"none",
-    position:"absolute",
-    right:"15px",
-    top:"65px",
-    zIndex:"10",
-    background:"#fff",
-    border:"1px solid #e7eaf0",
-    borderRadius:"12px",
-    padding:"8px",
-    boxShadow:"0 8px 25px #20263822",
-    minWidth:"190px"
-  });
-
-  const items = [
-    ["Мой профиль",() => switchView("profile")],
-    ["Уведомления",() => showToast("У вас 3 демонстрационных уведомления.")],
-    ["Настройки",() => switchView("settings")],
-    ["Выйти",() => showToast("Выход будет подключён после реализации авторизации.")]
-  ];
-
-  items.forEach(([label,action]) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = label;
-
-    Object.assign(button.style,{
-      display:"block",
-      width:"100%",
-      border:"0",
-      background:"#fff",
-      textAlign:"left",
-      padding:"10px",
-      borderRadius:"7px",
-      cursor:"pointer"
-    });
-
-    button.addEventListener("click",() => {
-      menu.style.display = "none";
-      ownerButton.setAttribute("aria-expanded","false");
-      action();
-    });
-
-    menu.appendChild(button);
-  });
-
-  document.body.appendChild(menu);
-
-  ownerButton.addEventListener("click",event => {
+  button.addEventListener("click", event => {
     event.stopPropagation();
-    const opening = menu.style.display === "none";
-    menu.style.display = opening ? "block" : "none";
-    ownerButton.setAttribute("aria-expanded",String(opening));
+
+    menu.hidden = !menu.hidden;
   });
 
-  document.addEventListener("click",event => {
-    if (!menu.contains(event.target) && event.target !== ownerButton) {
-      menu.style.display = "none";
-      ownerButton.setAttribute("aria-expanded","false");
+  document.addEventListener("click", event => {
+    if (!menu.contains(event.target) && event.target !== button) {
+      menu.hidden = true;
     }
   });
 }
 
-document.querySelectorAll("[data-view]").forEach(button => {
-  button.addEventListener("click",() => {
-    switchView(button.dataset.view);
-  });
-});
+function renderNotificationItems() {
+  const list = $("notificationsList");
 
-$("search")?.addEventListener("input",renderOrders);
-$("statusFilter")?.addEventListener("change",renderOrders);
+  if (!list) return;
 
-document.querySelectorAll(".tabs button").forEach(button => {
-  button.addEventListener("click",() => {
-    activeTab = button.dataset.filter || "all";
+  list.innerHTML = "";
 
-    document.querySelectorAll(".tabs button").forEach(item => {
-      item.classList.toggle("active",item === button);
+  notificationRecords.forEach((record, index) => {
+    const item = document.createElement("div");
+
+    item.className = "notification-item";
+    item.style.padding = "12px";
+    item.style.borderBottom = "1px solid #e5e7eb";
+
+    const text = document.createElement("div");
+    text.textContent = record.text;
+
+    const button = makeButton("Открыть");
+
+    button.addEventListener("click", () => {
+      markViewed(record.key, record.view);
+
+      if (record.view) {
+        switchView(record.view);
+      }
+
+      if (record.related) {
+        const order = demoOrders.find(
+          item => item.id === record.related
+        );
+
+        if (order) {
+          openOrder(order.id);
+        }
+      }
+
+      renderNotificationItems();
     });
 
-    renderOrders();
+    item.appendChild(text);
+    item.appendChild(button);
+
+    list.appendChild(item);
   });
-});
 
-$("closeDetail")?.addEventListener("click",closeOrder);
-
-detail?.addEventListener("click",event => {
-  if (event.target === detail) closeOrder();
-});
-
-document.addEventListener("keydown",event => {
-  if (event.key === "Escape") closeOrder();
-});
+  if (!notificationRecords.length) {
+    list.textContent = "Новых уведомлений нет.";
+  }
+}
 
 function setupNotifications() {
   const bell = $("bell");
+
   if (!bell) return;
 
   const panel = document.createElement("div");
@@ -506,76 +701,65 @@ function setupNotifications() {
 
   Object.assign(panel.style, {
     display: "none",
-    position: "fixed",
-    top: "110px",
-    right: "16px",
-    width: "min(340px, calc(100vw - 32px))",
+    position: "absolute",
+    right: "12px",
+    top: "60px",
+    zIndex: "1000",
+    width: "min(360px, calc(100vw - 24px))",
+    maxHeight: "420px",
+    overflowY: "auto",
     background: "#fff",
-    border: "1px solid #e7eaf0",
-    borderRadius: "14px",
-    padding: "16px",
-    boxShadow: "0 8px 30px #20263830",
-    zIndex: "1000"
+    border: "1px solid #ddd",
+    borderRadius: "12px",
+    padding: "12px",
+    boxShadow: "0 8px 24px rgba(0,0,0,.15)"
   });
 
   const heading = document.createElement("h3");
   heading.textContent = "Уведомления";
-  panel.appendChild(heading);
 
-  const items = [
-    ["📋 Новая заявка", "Поступила новая заявка от Анны Ивановой.", "orders"],
-    ["✉ Новое сообщение", "Клиент отправил новое сообщение.", "messages"],
-    ["₸ Ожидает оплаты", "Есть платёж, ожидающий оплаты.", "payments"]
-  ];
-
-  items.forEach(([title, description, view]) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = title + " — " + description;
-
-    Object.assign(button.style, {
-      display: "block",
-      width: "100%",
-      padding: "12px",
-      marginTop: "8px",
-      textAlign: "left",
-      border: "1px solid #e7eaf0",
-      borderRadius: "9px",
-      background: "#f8faff",
-      cursor: "pointer"
-    });
-
-    button.addEventListener("click", () => {
-  panel.style.display = "none";
-  switchView(view);
-  if (view === "orders") {
-    openOrder(demoOrders[0]);
-  }
-});
-
-    panel.appendChild(button);
+  const close = makeButton("Закрыть");
+  close.addEventListener("click", () => {
+    panel.style.display = "none";
   });
+
+  const list = document.createElement("div");
+  list.id = "notificationsList";
+
+  panel.appendChild(heading);
+  panel.appendChild(close);
+  panel.appendChild(list);
 
   document.body.appendChild(panel);
 
-  bell.type = "button";
   bell.addEventListener("click", event => {
     event.stopPropagation();
-    panel.style.display =
-      panel.style.display === "none" ? "block" : "none";
+
+    const isVisible = panel.style.display === "block";
+
+    panel.style.display = isVisible ? "none" : "block";
+
+    if (!isVisible) {
+      renderNotificationItems();
+    }
   });
 
   panel.addEventListener("click", event => {
     event.stopPropagation();
   });
 
-  document.addEventListener("click", () => {
-    panel.style.display = "none";
+  document.addEventListener("click", event => {
+    if (!panel.contains(event.target) && event.target !== bell) {
+      panel.style.display = "none";
+    }
   });
+
+  updateNotificationCount();
 }
 
-setupNotifications();
-
-setupOwnerMenu();
-renderOrders();
-switchView("overview");
+document.addEventListener("DOMContentLoaded", () => {
+  setupNotifications();
+  setupOwnerMenu();
+  renderOrders();
+  switchView("overview");
+});
