@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Предпросмотр панели управления — Mirror-info</title>
+  <style>
+    :root{--bg:#f4f6fa;--surface:#fff;--ink:#202638;--muted:#748096;--line:#e7eaf0;--accent:#6657d9;--accent-soft:#efedff;--green:#18845b;--amber:#a66a08;--red:#b74450;--nav:#20243a}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+    button,input,select{font:inherit}button{cursor:pointer}.layout{min-height:100vh;display:grid;grid-template-columns:248px 1fr}
+    aside{background:var(--nav);color:#fff;padding:24px 16px}.brand{font-size:19px;font-weight:750;padding:4px 10px 28px}.brand small{display:block;color:#aeb5ca;font-size:12px;font-weight:400;margin-top:3px}
+    .nav-label{color:#8992ad;font-size:11px;text-transform:uppercase;letter-spacing:.1em;padding:14px 10px 7px}.nav button{display:flex;width:100%;gap:11px;align-items:center;border:0;background:transparent;color:#d8dced;text-align:left;padding:11px 12px;border-radius:10px;margin:3px 0}.nav button.active,.nav button:hover{background:#343954;color:#fff}.nav .count{margin-left:auto;background:#514b83;padding:1px 8px;border-radius:20px;font-size:12px}
+    main{min-width:0;padding:28px clamp(16px,3vw,42px) 50px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:25px}.eyebrow{color:var(--muted);font-size:13px}.top h1{margin:3px 0 0;font-size:26px}.actions{display:flex;gap:9px;align-items:center}.btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:9px 13px;border-radius:9px}.demo{font-size:12px;color:#725b13;background:#fff4d7;border:1px solid #f3dfaa;padding:8px 12px;border-radius:9px;margin-bottom:20px}
+    .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:22px}.stat,.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px}.stat{padding:17px}.stat span{color:var(--muted);font-size:13px}.stat strong{display:block;font-size:28px;margin-top:7px}.stat em{font-style:normal;color:var(--green);font-size:12px}
+    .panel{padding:18px}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:15px}.panel h2{font-size:17px;margin:0}.filters{display:flex;gap:8px;flex-wrap:wrap}.filters input,.filters select{border:1px solid var(--line);border-radius:9px;background:#fff;padding:9px 11px;min-width:155px}
+    .tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:15px}.tabs button{border:0;background:transparent;color:var(--muted);padding:8px 11px;border-radius:8px}.tabs button.active{background:var(--accent-soft);color:var(--accent);font-weight:650}
+    .table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:760px}th{text-align:left;color:var(--muted);font-size:12px;font-weight:600;padding:11px 10px;border-bottom:1px solid var(--line)}td{padding:13px 10px;border-bottom:1px solid var(--line);font-size:14px}tbody tr{cursor:pointer}tbody tr:hover{background:#fafaff}.id{color:var(--accent);font-weight:700}.status{display:inline-block;border-radius:30px;padding:4px 9px;font-size:12px;background:#f0f1f5}.s-new{background:#fff1d9;color:var(--amber)}.s-work{background:#eaf0ff;color:#395aa8}.s-done{background:#e5f6ee;color:var(--green)}.s-cancel{background:#fdebed;color:var(--red)}
+    .bottom{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;padding-top:13px}.detail{position:fixed;inset:0;background:#171b2c66;display:none;align-items:center;justify-content:center;padding:18px;z-index:5}.detail.open{display:flex}.dialog{background:#fff;width:min(560px,100%);border-radius:16px;padding:22px;max-height:90vh;overflow:auto}.dialog-head{display:flex;justify-content:space-between;align-items:center}.dialog h2{margin:0}.close{border:0;background:#f1f2f7;border-radius:8px;padding:6px 10px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}.field small{display:block;color:var(--muted);font-size:12px}.field strong{display:block;margin-top:3px;font-size:14px}.dialog-note{background:#f7f7fb;padding:12px;border-radius:10px}.toast{position:fixed;bottom:20px;right:20px;background:#20243a;color:white;padding:12px 16px;border-radius:10px;display:none}
+    @media(max-width:900px){.layout{grid-template-columns:1fr}aside{padding:12px 14px}.brand{padding:4px 8px 10px}.nav{display:flex;overflow:auto;gap:5px}.nav-label{display:none}.nav button{white-space:nowrap;width:auto}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:560px){main{padding:20px 13px}.top{align-items:flex-start;flex-direction:column}.top h1{font-size:23px}.actions{width:100%;justify-content:space-between}.stats{gap:9px}.stat{padding:13px}.stat strong{font-size:24px}.panel{padding:12px}.detail-grid{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="brand">Mirror-info<small>Панель управления · макет</small></div>
+    <div class="nav-label">Рабочее пространство</div>
+    <nav class="nav" aria-label="Разделы панели">
+      <button class="active" data-view="overview">▦ Обзор</button>
+      <button data-view="orders">▤ Заявки <span class="count">3</span></button>
+      <button data-view="messages">✉ Сообщения</button>
+      <button data-view="payments">₸ Платежи</button>
+      <button data-view="users">♙ Пользователи</button>
+      <button data-view="staff">♧ Сотрудники</button>
+      <button data-view="reports">▥ Отчёты</button>
+      <button data-view="settings">⚙ Настройки</button>
+    </nav>
+    <div class="nav-label">Аккаунт</div>
+    <nav class="nav"><button data-view="profile">◉ Профиль владельца</button></nav>
+  </aside>
+  <main>
+    <header class="top">
+      <div><div class="eyebrow">Рабочее пространство / <span id="sectionName">Обзор</span></div><h1 id="pageTitle">Добро пожаловать!</h1></div>
+      <div class="actions"><button class="btn" id="bell">♧ Уведомления <b>3</b></button><button class="btn">Владелец ▾</button></div>
+    </header>
+    <div class="demo">Демонстрационный макет. Здесь только примеры — реальные заявки, сообщения и база данных не подключены. Изменения не сохраняются.</div>
+    <section class="stats">
+      <article class="stat"><span>Всего заявок</span><strong>128</strong><em>↑ 12 за неделю</em></article>
+      <article class="stat"><span>Новые</span><strong>3</strong><em>Требуют внимания</em></article>
+      <article class="stat"><span>В работе</span><strong>14</strong><em>Активные заказы</em></article>
+      <article class="stat"><span>Ожидают оплаты</span><strong>5</strong><em>На проверке</em></article>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2 id="listTitle">Последние заявки</h2><div class="filters"><input id="search" type="search" placeholder="Поиск по имени или №"><select id="statusFilter"><option value="">Все статусы</option><option>Новая</option><option>В работе</option><option>Выполнена</option><option>Отменена</option></select></div></div>
+      <div class="tabs" id="tabs"><button class="active" data-filter="all">Все</button><button data-filter="Новая">Новые</button><button data-filter="В работе">В работе</button><button data-filter="Выполнена">Завершённые</button><button data-filter="Отменена">Архив / отменённые</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Заявка</th><th>Клиент</th><th>Услуга</th><th>Дата</th><th>Сумма</th><th>Статус</th></tr></thead><tbody id="ordersBody"></tbody></table></div>
+      <div class="bottom"><span id="resultCount">Показано 5 из 5</span><span>На странице: 20 ▾</span></div>
+    </section>
+  </main>
+</div>
+<div class="detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+  <div class="dialog"><div class="dialog-head"><h2 id="detailTitle">Заявка</h2><button class="close" id="closeDetail">Закрыть ✕</button></div><div class="detail-grid" id="detailGrid"></div><div class="dialog-note" id="detailComment"></div></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script src="admin-preview.js"></script>
+</body>
+  </html>
