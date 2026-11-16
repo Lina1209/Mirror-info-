@@ -656,7 +656,7 @@ function renderNotificationItems() {
     item.style.borderBottom = "1px solid #e5e7eb";
 
     const text = document.createElement("div");
-    text.textContent = record.title + ": " + record.description;;
+    text.textContent = record.title + ": " + record.description;
 
     const button = makeButton("Открыть");
 
