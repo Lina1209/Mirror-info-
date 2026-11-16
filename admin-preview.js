@@ -623,37 +623,36 @@ function switchView(view) {
 }
 
 function setupOwnerMenu() {
-  const button = $("ownerMenu");
-  const menu = $("ownerDropdown");
-  const ownerNotifications = $("ownerNotifications");
+const button = $("ownerMenu");
+const menu = $("ownerDropdown");
+const ownerNotifications = $("ownerNotifications");
+const bell = $("bell");
 
-  if (button && menu) {
-    button.addEventListener("click", event => {
-      event.stopPropagation();
-      menu.hidden = !menu.hidden;
-    });
+if (button && menu) {
+button.addEventListener("click", event => {
+event.stopPropagation();
+menu.hidden = !menu.hidden;
+});
 
-    document.addEventListener("click", event => {
-      if (!menu.contains(event.target) && event.target !== button) {
-        menu.hidden = true;
-      }
-    });
+document.addEventListener("click", event => {
+  if (!menu.contains(event.target) && event.target !== button) {
+    menu.hidden = true;
   }
+});
 
-  if (ownerNotifications) {
-    ownerNotifications.addEventListener("click", event => {
-      event.stopPropagation();
+}
 
-      if (menu) menu.hidden = true;
+if (ownerNotifications && bell) {
+ownerNotifications.addEventListener("click", event => {
+event.preventDefault();
+event.stopPropagation();
 
-      const panel = $("notificationsPanel");
+  if (menu) menu.hidden = true;
 
-      if (panel) {
-        panel.style.display = "block";
-        renderNotificationItems();
-      }
-    });
-  }
+  bell.click();
+});
+
+}
 }
 
 function renderNotificationItems() {
