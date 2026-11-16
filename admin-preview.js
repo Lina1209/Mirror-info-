@@ -623,23 +623,6 @@ function switchView(view) {
 }
 
 function setupOwnerMenu() {
-  const button = $("ownerMenu");
-  const menu = $("ownerDropdown");
-
-  if (!button || !menu) return;
-
-  button.addEventListener("click", event => {
-    event.stopPropagation();
-
-    menu.hidden = !menu.hidden;
-  });
-
-  document.addEventListener("click", event => {
-    if (!menu.contains(event.target) && event.target !== button) {
-      menu.hidden = true;
-    }
-  });
-}
 
 function setupOwnerMenu() {
   const button = $("ownerMenu");
