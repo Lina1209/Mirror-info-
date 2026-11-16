@@ -557,7 +557,9 @@ function renderDemoSection(view) {
     row.addEventListener("click", () => {
       const record = section.rows[index];
       openDetails(
-        section.headers[0] || "Запись",
+        section.columns [0] ||
+
+"Запись",
         section.headers.map((header, i) => [
           header,
           record[i] || "—"
