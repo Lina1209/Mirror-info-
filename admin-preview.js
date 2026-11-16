@@ -2,6 +2,8 @@
 // Только тестовые данные. Реальная база и API не подключены.
 "use strict";
 
+const $ = id => document.getElementById(id);
+
 const demoOrders = [
   {id:"MI-2026-001",name:"Анна Иванова",email:"anna@example.com",service:"Перевод документа",date:"16.11.2026",amount:"4 500 ₽",status:"Новая",comment:"Ожидает подтверждения заявки."},
   {id:"MI-2026-002",name:"Мария Петрова",email:"maria@example.com",service:"Редактирование текста",date:"15.11.2026",amount:"2 800 ₽",status:"В работе",comment:"Заявка передана специалисту."},
@@ -11,7 +13,7 @@ const demoOrders = [
 ];
 
 const demoData = {
-  messages: {
+  messages:{
     title:"Сообщения",
     columns:["Клиент","Тема","Дата","Статус"],
     rows:[
@@ -20,7 +22,7 @@ const demoData = {
       ["Елена Смирнова","Благодарность","14.11.2026","Закрыто"]
     ]
   },
-  payments: {
+  payments:{
     title:"Платежи",
     columns:["№ платежа","Клиент","Сумма","Статус"],
     rows:[
@@ -29,7 +31,7 @@ const demoData = {
       ["PAY-003","Елена Смирнова","1 100 ₽","Оплачен"]
     ]
   },
-  users: {
+  users:{
     title:"Пользователи",
     columns:["Имя","Электронная почта","Регистрация","Статус"],
     rows:[
@@ -38,7 +40,7 @@ const demoData = {
       ["Елена Смирнова","elena@example.com","14.11.2026","Активен"]
     ]
   },
-  staff: {
+  staff:{
     title:"Сотрудники",
     columns:["Сотрудник","Роль","Назначено заявок","Статус"],
     rows:[
@@ -47,7 +49,7 @@ const demoData = {
       ["Поддержка","Support admin","3","Активен"]
     ]
   },
-  reports: {
+  reports:{
     title:"Отчёты",
     columns:["Показатель","Значение","Период"],
     rows:[
@@ -57,7 +59,7 @@ const demoData = {
       ["Ожидают оплаты","5","Сейчас"]
     ]
   },
-  settings: {
+  settings:{
     title:"Настройки",
     columns:["Параметр","Значение"],
     rows:[
@@ -67,7 +69,7 @@ const demoData = {
       ["Режим","Демонстрационный"]
     ]
   },
-  profile: {
+  profile:{
     title:"Профиль владельца",
     columns:["Параметр","Информация"],
     rows:[
@@ -78,8 +80,6 @@ const demoData = {
     ]
   }
 };
-
-const $ = id => document.getElementById(id);
 
 const main = document.querySelector("main");
 const stats = document.querySelector(".stats");
@@ -113,6 +113,15 @@ function showToast(message) {
   }, 2500);
 }
 
+function makeButton(label, action) {
+  const button = document.createElement("button");
+  button.className = "btn";
+  button.type = "button";
+  button.textContent = label;
+  button.addEventListener("click", action);
+  return button;
+}
+
 function statusClass(status) {
   return {
     "Новая":"s-new",
@@ -122,79 +131,13 @@ function statusClass(status) {
   }[status] || "";
 }
 
-function renderOrders() {
-  const body = $("ordersBody");
-  if (!body) return;
-
-  const query = ($("search")?.value || "").trim().toLowerCase();
-  const selectedStatus = $("statusFilter")?.value || "";
-
-  const filtered = demoOrders.filter(order => {
-    const matchesText = [
-      order.id, order.name, order.email, order.service
-    ].some(value => value.toLowerCase().includes(query));
-
-    const matchesStatus = !selectedStatus || order.status === selectedStatus;
-    const matchesTab = activeTab === "all" || order.status === activeTab;
-
-    return matchesText && matchesStatus && matchesTab;
-  });
-
-  body.replaceChildren();
-
-  filtered.forEach(order => {
-    const row = document.createElement("tr");
-
-    [
-      order.id,
-      order.name,
-      order.service,
-      order.date,
-      order.amount
-    ].forEach((value, index) => {
-      const cell = document.createElement("td");
-      cell.textContent = value;
-      if (index === 0) {
-        const span = document.createElement("span");
-        span.className = "id";
-        span.textContent = value;
-        cell.replaceChildren(span);
-      }
-      row.appendChild(cell);
-    });
-
-    const statusCell = document.createElement("td");
-    const badge = document.createElement("span");
-    badge.className = "status " + statusClass(order.status);
-    badge.textContent = order.status;
-    statusCell.appendChild(badge);
-    row.appendChild(statusCell);
-
-    row.addEventListener("click", () => openOrder(order));
-    body.appendChild(row);
-  });
-
-  if ($("resultCount")) {
-    $("resultCount").textContent =
-      `Показано ${filtered.length} из ${demoOrders.length}`;
-  }
-}
-
-function openOrder(order) {
+function openDetails(title, fields, relatedName) {
   if (!detail) return;
 
-  $("detailTitle").textContent = "Заявка " + order.id;
+  $("detailTitle").textContent = title;
+
   const grid = $("detailGrid");
   grid.replaceChildren();
-
-  const fields = [
-    ["Клиент",order.name],
-    ["Электронная почта",order.email],
-    ["Услуга",order.service],
-    ["Дата",order.date],
-    ["Стоимость",order.amount],
-    ["Статус",order.status]
-  ];
 
   fields.forEach(([label,value]) => {
     const field = document.createElement("div");
@@ -210,12 +153,117 @@ function openOrder(order) {
     grid.appendChild(field);
   });
 
-  $("detailComment").textContent = order.comment;
+  const note = $("detailComment");
+  note.replaceChildren();
+
+  const description = document.createElement("p");
+  description.textContent = "Демонстрационная карточка. Данные не сохраняются.";
+  note.appendChild(description);
+
+  if (relatedName) {
+    const related = demoOrders.find(order =>
+      order.name === relatedName
+    );
+
+    if (related) {
+      note.appendChild(makeButton(
+        "Открыть связанную заявку " + related.id,
+        () => openOrder(related)
+      ));
+    }
+  }
+
+  note.appendChild(makeButton(
+    "Отметить как просмотренное",
+    () => showToast("Запись просмотрена в демонстрационном режиме.")
+  ));
+
+  note.appendChild(makeButton(
+    "Закрыть карточку",
+    closeOrder
+  ));
+
   detail.classList.add("open");
+}
+
+function openOrder(order) {
+  openDetails("Заявка " + order.id,[
+    ["Номер заявки",order.id],
+    ["Клиент",order.name],
+    ["Электронная почта",order.email],
+    ["Услуга",order.service],
+    ["Дата",order.date],
+    ["Стоимость",order.amount],
+    ["Статус",order.status],
+    ["Комментарий",order.comment]
+  ],order.name);
 }
 
 function closeOrder() {
   detail?.classList.remove("open");
+}
+
+function renderOrders() {
+  const body = $("ordersBody");
+  if (!body) return;
+
+  const query = ($("search")?.value || "").trim().toLowerCase();
+  const selectedStatus = $("statusFilter")?.value || "";
+
+  const filtered = demoOrders.filter(order => {
+    const matchesText = [
+      order.id,order.name,order.email,order.service
+    ].some(value => value.toLowerCase().includes(query));
+
+    const matchesStatus = !selectedStatus ||
+      order.status === selectedStatus;
+
+    const matchesTab = activeTab === "all" ||
+      order.status === activeTab;
+
+    return matchesText && matchesStatus && matchesTab;
+  });
+
+  body.replaceChildren();
+
+  filtered.forEach(order => {
+    const row = document.createElement("tr");
+
+    [
+      order.id,
+      order.name,
+      order.service,
+      order.date,
+      order.amount
+    ].forEach((value,index) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+
+      if (index === 0) {
+        const span = document.createElement("span");
+        span.className = "id";
+        span.textContent = value;
+        cell.replaceChildren(span);
+      }
+
+      row.appendChild(cell);
+    });
+
+    const cell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "status " + statusClass(order.status);
+    badge.textContent = order.status;
+    cell.appendChild(badge);
+    row.appendChild(cell);
+
+    row.addEventListener("click",() => openOrder(order));
+    body.appendChild(row);
+  });
+
+  if ($("resultCount")) {
+    $("resultCount").textContent =
+      `Показано ${filtered.length} из ${demoOrders.length}`;
+  }
 }
 
 function renderDemoSection(view) {
@@ -243,8 +291,8 @@ function renderDemoSection(view) {
 
   const note = document.createElement("p");
   note.style.color = "#748096";
-  note.style.fontSize = "13px";
-  note.textContent = "Демонстрационные данные. Подключение реальных функций будет выполнено отдельно.";
+  note.textContent =
+    "Нажмите на любую строку, чтобы открыть подробную карточку.";
   section.appendChild(note);
 
   const wrap = document.createElement("div");
@@ -267,11 +315,32 @@ function renderDemoSection(view) {
 
   data.rows.forEach(values => {
     const row = document.createElement("tr");
+    row.style.cursor = "pointer";
 
     values.forEach(value => {
       const cell = document.createElement("td");
       cell.textContent = value;
       row.appendChild(cell);
+    });
+
+    row.addEventListener("click",() => {
+      const fields = data.columns.map((column,index) =>
+        [column,values[index]]
+      );
+
+      const relatedName = view === "messages" ||
+        view === "payments" || view === "users"
+        ? values[0] === "PAY-001" ? "Анна Иванова" :
+          values[0] === "PAY-002" ? "Мария Петрова" :
+          values[0] === "PAY-003" ? "Елена Смирнова" :
+          values[0]
+        : null;
+
+      openDetails(
+        data.title + " — " + values[0],
+        fields,
+        relatedName
+      );
     });
 
     tbody.appendChild(row);
@@ -286,7 +355,10 @@ function switchView(view) {
   if (!titles[view]) return;
 
   document.querySelectorAll("[data-view]").forEach(button => {
-    button.classList.toggle("active", button.dataset.view === view);
+    button.classList.toggle(
+      "active",
+      button.dataset.view === view
+    );
   });
 
   sectionName.textContent = titles[view];
@@ -298,63 +370,137 @@ function switchView(view) {
   stats.style.display = isOrders ? "grid" : "none";
   ordersPanel.style.display = isOrders ? "block" : "none";
 
-  const otherSection = $("otherSection");
-  if (otherSection) otherSection.remove();
+  $("otherSection")?.remove();
 
-  if (demoData[view]) {
-    renderDemoSection(view);
-  }
+  if (demoData[view]) renderDemoSection(view);
 
-  if (view === "overview" || view === "orders") {
+  if (isOrders) {
     activeTab = "all";
+
     document.querySelectorAll(".tabs button").forEach(button => {
       button.classList.toggle(
         "active",
         button.dataset.filter === "all"
       );
     });
+
     if ($("search")) $("search").value = "";
     if ($("statusFilter")) $("statusFilter").value = "";
+
     renderOrders();
   }
 
   window.scrollTo({top:0,behavior:"smooth"});
 }
 
+function setupOwnerMenu() {
+  const ownerButton = document.querySelector(".actions .btn:last-child");
+  if (!ownerButton) return;
+
+  ownerButton.type = "button";
+  ownerButton.setAttribute("aria-expanded","false");
+
+  const menu = document.createElement("div");
+  menu.id = "ownerMenu";
+
+  Object.assign(menu.style,{
+    display:"none",
+    position:"absolute",
+    right:"15px",
+    top:"65px",
+    zIndex:"10",
+    background:"#fff",
+    border:"1px solid #e7eaf0",
+    borderRadius:"12px",
+    padding:"8px",
+    boxShadow:"0 8px 25px #20263822",
+    minWidth:"190px"
+  });
+
+  const items = [
+    ["Мой профиль",() => switchView("profile")],
+    ["Уведомления",() => showToast("У вас 3 демонстрационных уведомления.")],
+    ["Настройки",() => switchView("settings")],
+    ["Выйти",() => showToast("Выход будет подключён после реализации авторизации.")]
+  ];
+
+  items.forEach(([label,action]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+
+    Object.assign(button.style,{
+      display:"block",
+      width:"100%",
+      border:"0",
+      background:"#fff",
+      textAlign:"left",
+      padding:"10px",
+      borderRadius:"7px",
+      cursor:"pointer"
+    });
+
+    button.addEventListener("click",() => {
+      menu.style.display = "none";
+      ownerButton.setAttribute("aria-expanded","false");
+      action();
+    });
+
+    menu.appendChild(button);
+  });
+
+  document.body.appendChild(menu);
+
+  ownerButton.addEventListener("click",event => {
+    event.stopPropagation();
+    const opening = menu.style.display === "none";
+    menu.style.display = opening ? "block" : "none";
+    ownerButton.setAttribute("aria-expanded",String(opening));
+  });
+
+  document.addEventListener("click",event => {
+    if (!menu.contains(event.target) && event.target !== ownerButton) {
+      menu.style.display = "none";
+      ownerButton.setAttribute("aria-expanded","false");
+    }
+  });
+}
+
 document.querySelectorAll("[data-view]").forEach(button => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click",() => {
     switchView(button.dataset.view);
   });
 });
 
-$("search")?.addEventListener("input", renderOrders);
-$("statusFilter")?.addEventListener("change", renderOrders);
+$("search")?.addEventListener("input",renderOrders);
+$("statusFilter")?.addEventListener("change",renderOrders);
 
 document.querySelectorAll(".tabs button").forEach(button => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click",() => {
     activeTab = button.dataset.filter || "all";
 
     document.querySelectorAll(".tabs button").forEach(item => {
-      item.classList.toggle("active", item === button);
+      item.classList.toggle("active",item === button);
     });
 
     renderOrders();
   });
 });
 
-$("closeDetail")?.addEventListener("click", closeOrder);
+$("closeDetail")?.addEventListener("click",closeOrder);
 
-detail?.addEventListener("click", event => {
+detail?.addEventListener("click",event => {
   if (event.target === detail) closeOrder();
 });
 
-document.addEventListener("keydown", event => {
+document.addEventListener("keydown",event => {
   if (event.key === "Escape") closeOrder();
 });
 
-$("bell")?.addEventListener("click", () => {
+$("bell")?.addEventListener("click",() => {
   showToast("У вас 3 демонстрационных уведомления.");
 });
 
+setupOwnerMenu();
 renderOrders();
 switchView("overview");
