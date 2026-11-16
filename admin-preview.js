@@ -643,7 +643,7 @@ function setupOwnerMenu() {
 
 function renderNotificationItems() {
   const list = $("notificationsList");
-
+const ownerNotifications = $("ownerNotifications");
   if (!list) return;
 
   list.innerHTML = "";
