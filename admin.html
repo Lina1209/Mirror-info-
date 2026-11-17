@@ -4,40 +4,464 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>Заказы — Транслятор файлов</title>
+  <title>Панель управления — Mirror-info</title>
+
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
   <link rel="stylesheet" href="style.css">
+
+  <style>
+    :root {
+      --admin-bg: #f4f6fb;
+      --admin-dark: #172033;
+      --admin-muted: #8791a5;
+      --admin-accent: #6c63ff;
+      --admin-border: #e8ebf2;
+    }
+
+    body {
+      background: var(--admin-bg);
+      color: var(--admin-dark);
+      font-family: Arial, sans-serif;
+    }
+
+    .admin-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .admin-sidebar {
+      width: 250px;
+      flex-shrink: 0;
+      background: #172033;
+      color: white;
+      padding: 26px 18px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .admin-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 42px;
+    }
+
+    .admin-logo-icon {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--admin-accent);
+    }
+
+    .admin-menu-title {
+      color: #8e98ac;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 0 12px 12px;
+    }
+
+    .admin-menu {
+      display: grid;
+      gap: 7px;
+    }
+
+    .admin-menu a {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      padding: 13px 14px;
+      color: #c2cada;
+      text-decoration: none;
+      border-radius: 10px;
+      font-size: 14px;
+      transition: .2s;
+    }
+
+    .admin-menu a:hover,
+    .admin-menu a.active {
+      background: #2b3650;
+      color: white;
+    }
+
+    .admin-menu a.active {
+      box-shadow: inset 3px 0 var(--admin-accent);
+    }
+
+    .admin-menu i {
+      width: 18px;
+      text-align: center;
+    }
+
+    .admin-sidebar-bottom {
+      margin-top: auto;
+      padding-top: 25px;
+      border-top: 1px solid #344057;
+    }
+
+    .admin-sidebar-bottom a {
+      display: block;
+      padding: 11px 12px;
+      color: #c2cada;
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .admin-main {
+      flex: 1;
+      min-width: 0;
+      padding: 32px;
+    }
+
+    .admin-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+
+    .admin-title {
+      font-size: 27px;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .admin-subtitle {
+      color: var(--admin-muted);
+      font-size: 13px;
+      margin-top: 7px;
+    }
+
+    .admin-btn {
+      border: 1px solid var(--admin-border);
+      background: white;
+      border-radius: 9px;
+      padding: 10px 15px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .admin-btn:hover {
+      background: #f0efff;
+    }
+
+    .admin-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+
+    .admin-stat {
+      background: white;
+      border: 1px solid var(--admin-border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+
+    .admin-stat-label {
+      color: var(--admin-muted);
+      font-size: 13px;
+    }
+
+    .admin-stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 12px;
+    }
+
+    .admin-section {
+      background: white;
+      border: 1px solid var(--admin-border);
+      border-radius: 14px;
+      padding: 22px;
+      margin-bottom: 22px;
+    }
+
+    .admin-section h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 18px;
+    }
+
+    .admin-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .admin-input {
+      border: 1px solid var(--admin-border);
+      border-radius: 9px;
+      padding: 11px 13px;
+      font-size: 13px;
+      min-width: 190px;
+      background: white;
+    }
+
+    .admin-mobile-toggle {
+      display: none;
+      border: 0;
+      background: white;
+      border-radius: 9px;
+      padding: 10px 13px;
+      font-size: 18px;
+    }
+
+    .admin-overlay {
+      display: none;
+    }
+
+    #adminMessage:empty {
+      display: none;
+    }
+
+    @media (max-width: 900px) {
+      .admin-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .admin-main {
+        padding: 22px;
+      }
+    }
+
+    @media (max-width: 650px) {
+      .admin-sidebar {
+        position: fixed;
+        z-index: 100;
+        top: 0;
+        bottom: 0;
+        left: -270px;
+        width: 250px;
+        transition: left .25s;
+      }
+
+      .admin-sidebar.open {
+        left: 0;
+      }
+
+      .admin-overlay.open {
+        display: block;
+        position: fixed;
+        z-index: 90;
+        inset: 0;
+        background: rgba(0,0,0,.45);
+      }
+
+      .admin-mobile-toggle {
+        display: block;
+      }
+
+      .admin-main {
+        padding: 18px 13px;
+      }
+
+      .admin-title {
+        font-size: 22px;
+      }
+
+      .admin-stats {
+        gap: 10px;
+      }
+
+      .admin-stat {
+        padding: 15px;
+      }
+
+      .admin-stat-value {
+        font-size: 23px;
+      }
+
+      .admin-section {
+        padding: 15px;
+      }
+
+      .admin-topbar {
+        align-items: flex-start;
+      }
+    }
+  </style>
 </head>
-<body class="min-h-screen flex flex-col">
-  <header class="mk-header">
-    <div class="mk-shell mk-header__inner">
-      <a href="index.html" class="mk-brand">
-        <span class="mk-brand__mark"><i class="fa-solid fa-clone" aria-hidden="true"></i></span>
-        <span><span class="mk-brand__name">Транслятор файлов</span><span class="mk-brand__tag">панель управления</span></span>
+
+<body>
+
+<div class="admin-layout">
+
+  <div class="admin-overlay" id="adminOverlay"></div>
+
+  <aside class="admin-sidebar" id="adminSidebar">
+
+    <div class="admin-logo">
+      <span class="admin-logo-icon">
+        <i class="fa-solid fa-clone"></i>
+      </span>
+      <span>Mirror-info</span>
+    </div>
+
+    <div class="admin-menu-title">Управление</div>
+
+    <nav class="admin-menu">
+      <a href="#overview" class="active" data-section="overview">
+        <i class="fa-solid fa-chart-pie"></i>
+        Обзор
       </a>
-      <div class="mk-header__actions">
-        <a href="index.html" class="mk-nav-link">На сайт</a>
-        <a href="/cdn-cgi/access/logout" class="mk-btn mk-btn--ghost mk-btn--sm">Выйти</a>
-      </div>
+
+      <a href="#orders" data-section="orders">
+        <i class="fa-solid fa-file-lines"></i>
+        Заявки
+      </a>
+    </nav>
+
+    <div class="admin-sidebar-bottom">
+      <a href="index.html">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        На сайт
+      </a>
+
+      <a href="/cdn-cgi/access/logout">
+        <i class="fa-solid fa-right-from-bracket"></i>
+        Выйти
+      </a>
     </div>
-  </header>
-  <main class="flex-1 py-10">
-    <div class="mk-shell">
-      <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+
+  </aside>
+
+  <main class="admin-main">
+
+    <div class="admin-topbar">
+
+      <div style="display:flex;align-items:center;gap:13px;">
+        <button class="admin-mobile-toggle" id="adminMenuToggle" type="button" aria-label="Открыть меню">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+
         <div>
-          <h1 class="mk-section__title">Управление заявками</h1>
-          <p class="text-sm">Доступ защищён Cloudflare Access. Пароль в коде сайта не хранится.</p>
+          <h1 class="admin-title">Панель управления</h1>
+          <p class="admin-subtitle">
+            Доступ защищён Cloudflare Access
+          </p>
         </div>
-        <button type="button" id="refreshOrders" class="mk-btn mk-btn--ghost mk-btn--sm"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Обновить</button>
       </div>
-      <div id="adminMessage" class="hidden mk-alert mb-4" role="status"></div>
-      <div id="adminOrdersContainer" class="grid gap-4" aria-live="polite"></div>
+
+      <button type="button" id="refreshOrders" class="admin-btn">
+        <i class="fa-solid fa-rotate"></i>
+        Обновить
+      </button>
+
     </div>
+
+    <div id="adminMessage" class="mk-alert mb-4" role="status"></div>
+
+    <section id="overview" class="admin-section">
+
+      <h2>
+        <i class="fa-solid fa-chart-pie"></i>
+        Обзор заявок
+      </h2>
+
+      <div class="admin-stats">
+
+        <div class="admin-stat">
+          <div class="admin-stat-label">Всего заявок</div>
+          <div class="admin-stat-value" id="statTotal">—</div>
+        </div>
+
+        <div class="admin-stat">
+          <div class="admin-stat-label">Новые</div>
+          <div class="admin-stat-value" id="statNew">—</div>
+        </div>
+
+        <div class="admin-stat">
+          <div class="admin-stat-label">В работе</div>
+          <div class="admin-stat-value" id="statProgress">—</div>
+        </div>
+
+        <div class="admin-stat">
+          <div class="admin-stat-label">Выполнены</div>
+          <div class="admin-stat-value" id="statDone">—</div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <section id="orders" class="admin-section">
+
+      <h2>
+        <i class="fa-solid fa-file-lines"></i>
+        Управление заявками
+      </h2>
+
+      <div class="admin-toolbar">
+
+        <input
+          type="search"
+          id="orderSearch"
+          class="admin-input"
+          placeholder="Поиск по заявкам..."
+          aria-label="Поиск по заявкам"
+        >
+
+        <select id="orderStatusFilter" class="admin-input" aria-label="Фильтр по статусу">
+          <option value="">Все статусы</option>
+          <option value="Новая">Новая</option>
+          <option value="В работе">В работе</option>
+          <option value="Выполнена">Выполнена</option>
+          <option value="Отменена">Отменена</option>
+        </select>
+
+      </div>
+
+      <div id="adminOrdersContainer" class="grid gap-4" aria-live="polite"></div>
+
+    </section>
+
+    <footer style="text-align:center;color:#8791a5;font-size:12px;padding:20px;">
+      © Lina_Winter · Mirror-info
+    </footer>
+
   </main>
-  <footer class="mk-footer">
-    <div class="mk-shell mk-footer__bottom"><span>©Lina_Winter · «©Mirror - info»</span><a href="index.html">На главную</a></div>
-  </footer>
-  <script src="admin.js" defer></script>
+
+</div>
+
+<script>
+  const adminSidebar = document.getElementById('adminSidebar');
+  const adminOverlay = document.getElementById('adminOverlay');
+  const adminMenuToggle = document.getElementById('adminMenuToggle');
+
+  function closeAdminMenu() {
+    adminSidebar.classList.remove('open');
+    adminOverlay.classList.remove('open');
+  }
+
+  adminMenuToggle.addEventListener('click', function() {
+    adminSidebar.classList.toggle('open');
+    adminOverlay.classList.toggle('open');
+  });
+
+  adminOverlay.addEventListener('click', closeAdminMenu);
+
+  document.querySelectorAll('.admin-menu a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      document.querySelectorAll('.admin-menu a').forEach(function(item) {
+        item.classList.remove('active');
+      });
+
+      this.classList.add('active');
+      closeAdminMenu();
+    });
+  });
+</script>
+
+<script src="admin.js" defer></script>
+
 </body>
 </html>
