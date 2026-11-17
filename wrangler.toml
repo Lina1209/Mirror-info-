@@ -11,3 +11,6 @@ database_id = "18bf0f34-ac4d-48ee-a0dd-59b25d44d0cb"
 binding = "DB"
 database_name = "mirror-info-preview"
 database_id = "28581e16-8ec1-4c6e-a5d0-51191f0810c1"
+[env.preview.vars]
+CF_ACCESS_TEAM = "purple-wind-cd5c"
+CF_ACCESS_AUD = "acb7612d4a7b226b4ae19aebb2895ffe564f5c88a96106da6c03862feb7ea2a1"
