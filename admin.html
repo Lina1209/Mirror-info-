@@ -437,28 +437,62 @@
   const adminOverlay = document.getElementById('adminOverlay');
   const adminMenuToggle = document.getElementById('adminMenuToggle');
 
+  const sections = Array.from(document.querySelectorAll('.admin-section'));
+  const navLinks = Array.from(document.querySelectorAll('.admin-menu a[data-section]'));
+
   function closeAdminMenu() {
-    adminSidebar.classList.remove('open');
-    adminOverlay.classList.remove('open');
+    adminSidebar?.classList.remove('open');
+    adminOverlay?.classList.remove('open');
   }
 
-  adminMenuToggle.addEventListener('click', function() {
-    adminSidebar.classList.toggle('open');
-    adminOverlay.classList.toggle('open');
-  });
+  if (adminMenuToggle) {
+    adminMenuToggle.addEventListener('click', function() {
+      adminSidebar?.classList.toggle('open');
+      adminOverlay?.classList.toggle('open');
+    });
+  }
 
-  adminOverlay.addEventListener('click', closeAdminMenu);
+  adminOverlay?.addEventListener('click', closeAdminMenu);
 
-  document.querySelectorAll('.admin-menu a').forEach(function(link) {
-    link.addEventListener('click', function() {
-      document.querySelectorAll('.admin-menu a').forEach(function(item) {
-        item.classList.remove('active');
-      });
+  function showSection(sectionId) {
+    const target = sections.find(section => section.id === sectionId);
+    if (!target) return;
 
-      this.classList.add('active');
-      closeAdminMenu();
+    sections.forEach(section => {
+      section.hidden = section !== target;
+    });
+
+    navLinks.forEach(link => {
+      const active = link.dataset.section === sectionId;
+      link.classList.toggle('active', active);
+
+      if (active) {
+        link.setAttribute('aria-current', 'page');
+      } else {
+        link.removeAttribute('aria-current');
+      }
+    });
+
+    if (window.location.hash !== `#${sectionId}`) {
+      history.replaceState(null, '', `#${sectionId}`);
+    }
+
+    closeAdminMenu();
+  }
+
+  navLinks.forEach(link => {
+    link.addEventListener('click', function(event) {
+      event.preventDefault();
+      showSection(this.dataset.section);
     });
   });
+
+  const requestedSection = window.location.hash.slice(1);
+  const initialSection = sections.some(section => section.id === requestedSection)
+    ? requestedSection
+    : 'overview';
+
+  showSection(initialSection);
 </script>
 
 <script src="admin.js" defer></script>
