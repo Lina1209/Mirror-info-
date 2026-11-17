@@ -818,6 +818,13 @@ function setupNotifications() {
 document.addEventListener("DOMContentLoaded", () => {
   setupNotifications();
   setupOwnerMenu();
+
+  const closeDetail = $("closeDetail");
+
+  if (closeDetail) {
+    closeDetail.addEventListener("click", closeOrder);
+  }
+
   renderOrders();
   switchView("overview");
 });
