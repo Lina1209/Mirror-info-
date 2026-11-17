@@ -316,113 +316,123 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function renderOrders() {
-    container.replaceChildren();
+ function renderOrders() {
+  container.replaceChildren();
 
-    const filteredOrders = getFilteredOrders();
+  const filteredOrders = getFilteredOrders();
 
-    if (!filteredOrders.length) {
-      const empty = document.createElement('div');
-      empty.className = 'mk-card p-6 text-center';
-      empty.textContent = orders.length
-        ? 'По вашему запросу ничего не найдено.'
-        : 'Заявок пока нет.';
+  if (!filteredOrders.length) {
+    const empty = document.createElement('div');
+    empty.className = 'mk-card p-6 text-center';
+    empty.textContent = orders.length
+      ? 'По вашему запросу ничего не найдено.'
+      : 'Заявок пока нет.';
 
-      container.appendChild(empty);
-      return;
-    }
-
-    for (const order of filteredOrders) {
-      const card = document.createElement('article');
-      card.className = 'mk-card p-5';
-
-      const header = document.createElement('div');
-      header.className = 'flex flex-wrap justify-between items-center gap-3 pb-3 border-b';
-
-      const title = document.createElement('strong');
-      title.textContent = `#${order.id} · ${order.name} (${order.email})`;
-
-      const status = document.createElement('select');
-      status.className = 'mk-select';
-      status.setAttribute('aria-label', `Статус заявки ${order.id}`);
-
-      for (const value of statuses) {
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = value;
-        option.selected = value === order.status;
-        status.appendChild(option);
-      }
-
-      status.addEventListener('change', async () => {
-        const previousStatus = order.status;
-        status.disabled = true;
-
-        try {
-          await request('/api/admin/orders', {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              id: order.id,
-              status: status.value
-            })
-          });
-
-          order.status = status.value;
-
-          updateStatistics();
-          renderOrders();
-
-          showMessage('Статус заявки успешно обновлён.');
-
-        } catch (error) {
-          showMessage(error.message, true);
-          status.value = previousStatus;
-          status.disabled = false;
-        }
-      });
-
-      header.append(title, status);
-      card.appendChild(header);
-
-      addText(card, 'p', 'Услуга:', order.service);
-      addText(card, 'p', 'Язык:', order.language);
-      addText(card, 'p', 'Формат:', order.format);
-      addText(card, 'p', 'Объём:', order.chars ? `${order.chars} символов` : '—');
-      addText(card, 'p', 'Контакт:', order.phone);
-      addText(card, 'p', 'Оплата:', order.payment);
-      addText(card, 'p', 'Расчёт:', order.estimate);
-      addText(card, 'p', 'Дата:', order.created_at);
-
-      if (order.file_link) {
-        try {
-          const parsed = new URL(order.file_link);
-
-          if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-            const link = document.createElement('a');
-
-            link.href = parsed.href;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            link.className = 'underline';
-            link.textContent = 'Открыть файл клиента';
-
-            card.appendChild(link);
-          }
-        } catch (_) {
-          // Некорректная ссылка не отображается.
-        }
-      }
-
-      if (order.comment) {
-        addText(card, 'p', 'Комментарий:', order.comment);
-      }
-
-      container.appendChild(card);
-    }
+    container.appendChild(empty);
+    return;
   }
+
+  for (const order of filteredOrders) {
+    const card = document.createElement('article');
+    card.className = 'mk-card p-5';
+
+    const header = document.createElement('div');
+    header.className = 'flex flex-wrap justify-between items-center gap-3';
+
+    const title = document.createElement('button');
+    title.type = 'button';
+    title.className = 'text-left font-bold';
+    title.textContent = `#${order.id} · ${order.name}`;
+    title.setAttribute('aria-expanded', 'false');
+
+    const status = document.createElement('select');
+    status.className = 'mk-select';
+    status.setAttribute('aria-label', `Статус заявки ${order.id}`);
+
+    for (const value of statuses) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      option.selected = value === order.status;
+      status.appendChild(option);
+    }
+
+    status.addEventListener('change', async () => {
+      const previousStatus = order.status;
+      status.disabled = true;
+
+      try {
+        await request('/api/admin/orders', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            id: order.id,
+            status: status.value
+          })
+        });
+
+        order.status = status.value;
+        updateStatistics();
+        renderOrders();
+        showMessage('Статус заявки успешно обновлён.');
+
+      } catch (error) {
+        showMessage(error.message, true);
+        status.value = previousStatus;
+        status.disabled = false;
+      }
+    });
+
+    header.append(title, status);
+    card.appendChild(header);
+
+    const details = document.createElement('div');
+    details.className = 'mt-4 pt-4 border-t';
+    details.hidden = true;
+
+    addText(details, 'p', 'Имя клиента:', order.name);
+    addText(details, 'p', 'Email:', order.email);
+    addText(details, 'p', 'Услуга:', order.service);
+    addText(details, 'p', 'Язык:', order.language);
+    addText(details, 'p', 'Формат:', order.format);
+    addText(details, 'p', 'Объём:', order.chars ? `${order.chars} символов` : '—');
+    addText(details, 'p', 'Телефон:', order.phone);
+    addText(details, 'p', 'Оплата:', order.payment);
+    addText(details, 'p', 'Расчёт:', order.estimate);
+    addText(details, 'p', 'Дата:', order.created_at);
+
+    if (order.comment) {
+      addText(details, 'p', 'Комментарий:', order.comment);
+    }
+
+    if (order.file_link) {
+      try {
+        const parsed = new URL(order.file_link);
+
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+          const link = document.createElement('a');
+          link.href = parsed.href;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.className = 'underline inline-block mt-3';
+          link.textContent = 'Открыть файл клиента';
+          details.appendChild(link);
+        }
+      } catch (_) {}
+    }
+
+    title.addEventListener('click', () => {
+      details.hidden = !details.hidden;
+      title.setAttribute('aria-expanded', String(!details.hidden));
+      title.textContent = `${details.hidden ? '＋' : '−'} #${order.id} · ${order.name}`;
+    });
+
+    card.appendChild(details);
+    container.appendChild(card);
+  }
+ }
 
   async function request(url, options = {}) {
     const response = await fetch(url, {
