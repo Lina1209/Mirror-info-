@@ -1,6 +1,16 @@
+import { authorizeAccess } from '../../_lib/access.js';
+
 export async function onRequestGet({ request, env }) {
-  if (!request.headers.get('Cf-Access-Jwt-Assertion')) {
-    return new Response('Требуется авторизация', { status: 401 });
+  const identity = await authorizeAccess(request, env, 'owner');
+
+  if (!identity.ok) {
+    return Response.json({
+      ok: false,
+      error: identity.status === 403
+        ? 'Эта операция доступна только владельцу.'
+        : 'Не удалось подтвердить доступ.',
+      code: identity.code
+    }, { status: identity.status });
   }
 
   if (!env.TELEGRAM_BOT_TOKEN) {
@@ -35,10 +45,7 @@ export async function onRequestGet({ request, env }) {
       });
     }
 
-    return Response.json({
-      ok: true,
-      chats: messages
-    });
+    return Response.json({ ok: true, chats: messages });
   } catch (_) {
     return Response.json({
       ok: false,
