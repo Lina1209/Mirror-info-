@@ -2351,6 +2351,7 @@
     translatedAssetName = '';
     lastOcrLines = [];
     lastOcrLanguage = '';
+    lastOcrFile = null;
     clearTranslatedAssetPreview();
 
     if ($('fileInput')) {
@@ -2460,6 +2461,7 @@
         translatedAssetName = '';
         lastOcrLines = [];
         lastOcrLanguage = '';
+    lastOcrFile = null;
         clearTranslatedAssetPreview();
         $('resultWrap')?.classList.add('hidden');
 
