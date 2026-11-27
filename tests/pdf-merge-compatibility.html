@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mirror Info — PDF merge compatibility spike</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;max-width:850px;margin:32px auto;padding:0 16px;color:#202633}
+    button{padding:12px 18px;border:0;border-radius:8px;background:#315c86;color:white;font-weight:600}
+    pre{white-space:pre-wrap;background:#f2f4f7;padding:16px;border-radius:8px;min-height:120px}
+    .note{background:#fff8e8;padding:12px 16px;border-left:4px solid #d69b28}
+  </style>
+</head>
+<body>
+  <h1>PDF merge compatibility spike</h1>
+  <p>Изолированный ручной тест. Не подключён к приложению и не меняет текущий лимит перевода.</p>
+  <p class="note">Проверяет две независимо созданные PDF-части: количество страниц, геометрию A4/альбомной страницы, внешние и внутренние ссылки, метаданные и повторное открытие результата PDF.js. Не является тестом больших файлов или Cloudflare Workers.</p>
+  <button id="run">Запустить тест</button>
+  <pre id="log" aria-live="polite">Ожидание запуска…</pre>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    (function () {
+      const log = document.getElementById('log');
+      const button = document.getElementById('run');
+      const lines = [];
+      function report(message) { lines.push(message); log.textContent = lines.join('\\n'); }
+      function assert(condition, message) {
+        if (!condition) throw new Error('FAIL: ' + message);
+        report('PASS: ' + message);
+      }
+      function makeBatch(label, title) {
+        const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4', compress: true });
+        doc.setProperties({ title, subject: 'Mirror Info PDF merge test', author: 'Mirror Info' });
+        doc.setFontSize(18);
+        doc.text(label + ' — page 1', 48, 60);
+        doc.text('External link', 48, 100);
+        doc.link(45, 82, 110, 26, { url: 'https://example.com/' + label.toLowerCase() });
+        doc.text('Internal link to page 2', 48, 145);
+        doc.link(45, 127, 180, 26, { pageNumber: 2 });
+        doc.addPage('a4', 'landscape');
+        doc.text(label + ' — page 2 (landscape)', 48, 60);
+        return doc.output('arraybuffer');
+      }
+      async function inspect(bytes) {
+        const task = window.pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
+        const pdf = await task.promise;
+        const pages = [];
+        let externalLinks = 0;
+        let internalLinks = 0;
+        for (let i = 1; i <= pdf.numPages; i += 1) {
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 1 });
+          pages.push({ width: Math.round(viewport.width), height: Math.round(viewport.height) });
+          const annotations = await page.getAnnotations();
+          externalLinks += annotations.filter(a => typeof a.url === 'string' && a.url.startsWith('https://')).length;
+          internalLinks += annotations.filter(a => a.dest || a.unsafeUrl).length;
+          page.cleanup();
+        }
+        const metadata = await pdf.getMetadata();
+        await pdf.destroy();
+        return { pages, externalLinks, internalLinks, title: metadata.info && metadata.info.Title };
+      }
+      button.addEventListener('click', async function () {
+        lines.length = 0;
+        button.disabled = true;
+        try {
+          assert(!!window.jspdf && !!window.PDFLib && !!window.pdfjsLib, 'Pinned test libraries loaded (jsPDF 2.5.2, pdf-lib 1.17.1, PDF.js 3.11.174)');
+          const first = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH A', 'Mirror Info batch A'));
+          const second = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH B', 'Mirror Info batch B'));
+          const merged = await window.PDFLib.PDFDocument.create();
+          merged.setTitle('Mirror Info merged compatibility test');
+          merged.setAuthor('Mirror Info');
+          for (const source of [first, second]) {
+            const copied = await merged.copyPages(source, source.getPageIndices());
+            copied.forEach(page => merged.addPage(page));
+          }
+          const output = await merged.save({ useObjectStreams: true });
+          const result = await inspect(output);
+          assert(result.pages.length === 4, 'Four pages survive a two-batch merge');
+          assert(result.pages[0].width > result.pages[0].height, 'A4 portrait source page geometry is preserved (jsPDF default points orientation check)');
+          assert(result.pages[1].width > result.pages[1].height, 'Landscape page geometry is preserved');
+          assert(result.externalLinks >= 2, 'External URI link annotations survive from both batches');
+          assert(result.internalLinks >= 2, 'Internal link annotations remain present in the merged output');
+          assert(result.title === 'Mirror Info merged compatibility test', 'Merged PDF metadata can be written and read back');
+          report('RESULT: PASS — merged PDF reopened successfully with PDF.js.');
+          report('Page geometry: ' + JSON.stringify(result.pages));
+          report('Link counts: external=' + result.externalLinks + ', internal=' + result.internalLinks);
+          report('NOTE: This is a small browser compatibility check only. It does not establish bounded memory, cross-batch destination correctness, bookmarks, forms, signatures, or Cloudflare runtime suitability.');
+          const blob = new Blob([output], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'mirror-info-merge-spike.pdf';
+          a.textContent = 'Скачать тестовый PDF';
+          a.style.display = 'inline-block';
+          a.style.marginTop = '12px';
+          document.body.appendChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (error) {
+          report('RESULT: FAIL — ' + (error && error.message ? error.message : String(error)));
+          console.error(error);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    }());
+  </script>
+</body>
+</html>
