@@ -1581,25 +1581,29 @@
       throw new Error('Файл не соответствует структуре EPUB: отсутствует корректный mimetype.');
     }
 
-    const entries = zip.file(/\.(xhtml|html|htm)$/i).filter(entry => !entry.dir);
-    if (!entries.length) {
+    const chapterEntries = zip.file(/\.(xhtml|html|htm)$/i).filter(entry => !entry.dir);
+    const ncxEntries = zip.file(/\.ncx$/i).filter(entry => !entry.dir);
+    if (!chapterEntries.length) {
       throw new Error('В EPUB не найдены главы XHTML/HTML.');
     }
 
     const previewParts = [];
-    const selector = 'title,p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption,caption,dt,dd';
+    const chapterSelector = 'title,p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption,caption,dt,dd';
 
-    for (const entry of entries) {
+    for (const entry of [...chapterEntries, ...ncxEntries]) {
+      const isNcx = /\.ncx$/i.test(entry.name);
       const xml = await entry.async('text');
       const doc = new DOMParser().parseFromString(xml, 'application/xml');
       if (doc.querySelector('parsererror')) {
         throw new Error('Не удалось прочитать раздел EPUB: ' + entry.name);
       }
 
+      // NCX содержит отдельные подписи оглавления в элементах <text>.
+      // Переводим только их содержимое: navPoint, playOrder и content src остаются прежними.
       const updated = await translateXmlBlocks(
         new XMLSerializer().serializeToString(doc),
-        selector,
-        'главы EPUB',
+        isNcx ? 'text' : chapterSelector,
+        isNcx ? 'оглавление EPUB' : 'главы EPUB',
         previewParts
       );
       const translatedDoc = new DOMParser().parseFromString(updated, 'application/xml');
@@ -1607,19 +1611,21 @@
         throw new Error('После перевода повреждена XML-разметка EPUB: ' + entry.name);
       }
 
-      // Переводим доступные описания изображений и подсказки, не меняя src/href,
-      // идентификаторы, классы CSS и ссылки навигации.
-      const translatableAttributes = ['alt', 'title', 'aria-label'];
-      for (const element of Array.from(translatedDoc.getElementsByTagName('*'))) {
-        for (const attributeName of translatableAttributes) {
-          const attribute = element.getAttributeNode(attributeName);
-          if (!attribute || !attribute.value.trim()) continue;
-          const original = attribute.value;
-          const leading = original.match(/^\\s*/)?.[0] || '';
-          const trailing = original.match(/\\s*$/)?.[0] || '';
-          const translated = await translateInParts(original.trim());
-          previewParts.push(translated);
-          attribute.value = leading + translated + trailing;
+      if (!isNcx) {
+        // Переводим доступные описания изображений и подсказки, не меняя src/href,
+        // идентификаторы, классы CSS и ссылки навигации.
+        const translatableAttributes = ['alt', 'title', 'aria-label'];
+        for (const element of Array.from(translatedDoc.getElementsByTagName('*'))) {
+          for (const attributeName of translatableAttributes) {
+            const attribute = element.getAttributeNode(attributeName);
+            if (!attribute || !attribute.value.trim()) continue;
+            const original = attribute.value;
+            const leading = original.match(/^\\s*/)?.[0] || '';
+            const trailing = original.match(/\\s*$/)?.[0] || '';
+            const translated = await translateInParts(original.trim());
+            previewParts.push(translated);
+            attribute.value = leading + translated + trailing;
+          }
         }
       }
 
