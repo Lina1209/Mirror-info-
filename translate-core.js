@@ -1506,6 +1506,7 @@
               if (item.italic === true) outlineOptions.italic = true;
               const node = outlineApi.add(parent || null, translatedTitle, outlineOptions);
               addedOutlineItems += 1;
+              copiedOutlineItemCount = addedOutlineItems;
               if (Array.isArray(item.items) && item.items.length) {
                 await addOutlineItems(item.items, node, depth + 1);
               }
@@ -1513,7 +1514,6 @@
           };
 
           await addOutlineItems(sourceOutline, null, 0);
-          copiedOutlineItemCount = addedOutlineItems;
         }
       } catch (_) {
         pdfInspectionWarnings.push('Не удалось полностью прочитать или перенести оглавление PDF.');
