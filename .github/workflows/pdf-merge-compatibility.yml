@@ -7,14 +7,6 @@ on:
       - 'tests/run-pdf-merge-compatibility.mjs'
       - '.github/workflows/pdf-merge-compatibility.yml'
       - 'PDF-LARGE-FILES-ARCHITECTURE.md'
-  push:
-    branches:
-      - feature/preserve-format-image-translation-main
-    paths:
-      - 'tests/pdf-merge-compatibility.html'
-      - 'tests/run-pdf-merge-compatibility.mjs'
-      - '.github/workflows/pdf-merge-compatibility.yml'
-      - 'PDF-LARGE-FILES-ARCHITECTURE.md'
   workflow_dispatch:
 
 permissions:
