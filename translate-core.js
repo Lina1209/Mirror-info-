@@ -352,9 +352,10 @@
     const totalWeight = originalWeights.reduce((sum, value) => sum + value, 0);
     const tokens = String(text || '').match(/\S+\s*/g) || [];
     const buckets = nodes.map(() => '');
+    const translatedLength = tokens.reduce((sum, token) => sum + token.length, 0);
     let tokenIndex = 0;
     for (let i = 0; i < nodes.length; i += 1) {
-      const target = i === nodes.length - 1 ? Infinity : totalWeight * originalWeights[i] / totalWeight;
+      const target = i === nodes.length - 1 ? Infinity : translatedLength * originalWeights[i] / totalWeight;
       let assigned = 0;
       while (tokenIndex < tokens.length && (assigned < target || i === nodes.length - 1)) {
         const token = tokens[tokenIndex++];
@@ -492,6 +493,9 @@
       });
     } finally {
       URL.revokeObjectURL(objectUrl);
+    }
+    if (image.naturalWidth * image.naturalHeight > 32000000) {
+      throw new Error('Изображение слишком большое для безопасной обработки в браузере. Уменьшите его размер и загрузите снова.');
     }
     const canvas = document.createElement('canvas');
     canvas.width = image.naturalWidth;
