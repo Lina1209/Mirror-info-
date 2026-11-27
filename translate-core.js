@@ -1365,7 +1365,9 @@
       if (entry.name.startsWith('word/charts/')) {
         const stringCaches = [
           ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strCache')),
-          ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strLit'))
+          ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strLit')),
+          // Многоуровневые подписи осей хранятся в отдельном кэше.
+          ...Array.from(doc.getElementsByTagNameNS(chartNs, 'multiLvlStrCache'))
         ];
         await translateTextGroups(stringCaches, chartNs, 'v');
       }
