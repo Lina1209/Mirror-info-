@@ -384,6 +384,7 @@
     const worker = await ensureTesseract();
 
     const result = await worker.recognize(source);
+    lastOcrLines = (result.data?.lines || []).filter(line => line.text && line.text.trim() && line.bbox);
 
     return result.data?.text || '';
   }
@@ -642,6 +643,297 @@
     return translated.join('\n\n');
   }
 
+
+
+  // Экспорт переведённого файла с сохранением исходного контейнера.
+  let translatedAssetBlob = null;
+  let translatedAssetName = '';
+  let lastOcrLines = [];
+
+  function setTranslatedAsset(blob, file, outputExtension) {
+    translatedAssetBlob = blob;
+    const base = (file?.name || 'mirror-info-translation').replace(/\.[^.]+$/, '');
+    translatedAssetName = base + '.translated.' + outputExtension;
+  }
+
+  function distributeTranslatedText(text, nodes) {
+    if (!nodes.length) return;
+    const weights = nodes.map(node => Math.max(1, (node.textContent || '').length));
+    const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+    const tokens = String(text || '').match(/\S+\s*/g) || [];
+    const translatedLength = tokens.reduce((sum, token) => sum + token.length, 0);
+    const buckets = nodes.map(() => '');
+    let tokenIndex = 0;
+
+    for (let index = 0; index < nodes.length; index += 1) {
+      const target = index === nodes.length - 1
+        ? Infinity
+        : translatedLength * weights[index] / totalWeight;
+      let assigned = 0;
+      while (tokenIndex < tokens.length && (assigned < target || index === nodes.length - 1)) {
+        const token = tokens[tokenIndex++];
+        buckets[index] += token;
+        assigned += token.length;
+        if (index !== nodes.length - 1 && assigned >= target) break;
+      }
+    }
+
+    nodes.forEach((node, index) => {
+      node.textContent = buckets[index];
+      if (/^\s|\s$/.test(buckets[index])) {
+        node.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+      }
+    });
+  }
+
+  async function translateXmlBlocks(xmlText, selector, label, previewParts) {
+    const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    if (doc.querySelector('parsererror')) {
+      throw new Error('Не удалось разобрать XML-структуру: ' + label + '.');
+    }
+
+    const blocks = Array.from(doc.querySelectorAll(selector)).filter(element => {
+      if (element.closest('script,style,pre,code')) return false;
+      return !Array.from(element.children).some(child => child.matches(selector));
+    });
+
+    for (let index = 0; index < blocks.length; index += 1) {
+      const walker = doc.createTreeWalker(blocks[index], NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.textContent && node.textContent.trim()) textNodes.push(node);
+      }
+
+      const source = textNodes.map(item => item.textContent).join('');
+      if (!source.trim()) continue;
+
+      const leading = source.match(/^\s*/)?.[0] || '';
+      const trailing = source.match(/\s*$/)?.[0] || '';
+      const translated = await translateInParts(source.trim());
+      previewParts?.push(translated);
+      distributeTranslatedText(leading + translated + trailing, textNodes);
+
+      progress(
+        45 + (index + 1) / Math.max(1, blocks.length) * 45,
+        'Переводим ' + label + ': ' + (index + 1) + ' из ' + blocks.length + '…'
+      );
+    }
+
+    return new XMLSerializer().serializeToString(doc);
+  }
+
+  async function translateDocxPackage(file) {
+    const JSZip = await ensureJSZip();
+    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    const entries = zip.file(/^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/i);
+
+    if (!entries.length) {
+      throw new Error('В DOCX не найдена основная структура Word.');
+    }
+
+    const previewParts = [];
+    for (const entry of entries) {
+      const doc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
+      if (doc.querySelector('parsererror')) {
+        throw new Error('Не удалось прочитать часть DOCX: ' + entry.name);
+      }
+
+      const paragraphs = Array.from(doc.getElementsByTagNameNS(
+        'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+        'p'
+      ));
+
+      for (let index = 0; index < paragraphs.length; index += 1) {
+        const textNodes = Array.from(paragraphs[index].getElementsByTagNameNS(
+          'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+          't'
+        ));
+        const source = textNodes.map(node => node.textContent || '').join('');
+        if (!source.trim()) continue;
+
+        const leading = source.match(/^\s*/)?.[0] || '';
+        const trailing = source.match(/\s*$/)?.[0] || '';
+        const translated = await translateInParts(source.trim());
+        previewParts.push(translated);
+        distributeTranslatedText(leading + translated + trailing, textNodes);
+      }
+
+      zip.file(entry.name, new XMLSerializer().serializeToString(doc));
+    }
+
+    const blob = await zip.generateAsync({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    });
+
+    return {
+      blob,
+      text: previewParts.join('\n\n') || 'В DOCX не найден текст для перевода.'
+    };
+  }
+
+  async function translateEpubPackage(file) {
+    const JSZip = await ensureJSZip();
+    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    const entries = zip.file(/\.(xhtml|html|htm)$/i).filter(entry => !entry.dir);
+
+    if (!entries.length) {
+      throw new Error('В EPUB не найдены главы XHTML/HTML.');
+    }
+
+    const previewParts = [];
+    const selector = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption,caption,dt,dd';
+
+    for (const entry of entries) {
+      const xml = await entry.async('text');
+      const updated = await translateXmlBlocks(xml, selector, 'главы EPUB', previewParts);
+      zip.file(entry.name, updated);
+    }
+
+    const blob = await zip.generateAsync({
+      type: 'blob',
+      mimeType: 'application/epub+zip'
+    });
+
+    return {
+      blob,
+      text: previewParts.join('\n\n') || 'В EPUB не найден текст для перевода.'
+    };
+  }
+
+  function sampleBackgroundColor(context, box, width, height) {
+    const left = Math.max(0, Math.floor(box.x0));
+    const right = Math.min(width - 1, Math.ceil(box.x1));
+    const top = Math.max(0, Math.floor(box.y0));
+    const bottom = Math.min(height - 1, Math.ceil(box.y1));
+    const samples = [];
+    const step = Math.max(2, Math.floor((right - left) / 8));
+
+    for (let x = left; x <= right; x += step) {
+      for (const y of [Math.max(0, top - 2), Math.min(height - 1, bottom + 2)]) {
+        const pixel = context.getImageData(x, y, 1, 1).data;
+        samples.push([pixel[0], pixel[1], pixel[2]]);
+      }
+    }
+
+    if (!samples.length) return 'rgba(255,255,255,0.95)';
+    const average = [0, 1, 2].map(channel =>
+      Math.round(samples.reduce((sum, pixel) => sum + pixel[channel], 0) / samples.length)
+    );
+    return 'rgba(' + average[0] + ',' + average[1] + ',' + average[2] + ',0.96)';
+  }
+
+  async function translateImageFile(file) {
+    const lines = lastOcrLines.filter(line => line.text && line.text.trim() && line.bbox);
+    if (!lines.length) {
+      throw new Error('Не удалось получить координаты текста на изображении. Попробуйте более чёткий JPG или PNG.');
+    }
+
+    const translatedLines = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      translatedLines.push(await translateInParts(lines[index].text.trim()));
+      progress(
+        45 + (index + 1) / lines.length * 40,
+        'Переводим строки изображения: ' + (index + 1) + ' из ' + lines.length + '…'
+      );
+    }
+
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('Не удалось открыть исходное изображение.'));
+        image.src = objectUrl;
+      });
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+
+    if (image.naturalWidth * image.naturalHeight > 32000000) {
+      throw new Error('Изображение слишком большое для безопасной обработки в браузере. Уменьшите его размер и повторите попытку.');
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Не удалось подготовить изображение для перевода.');
+    context.drawImage(image, 0, 0);
+
+    lines.forEach((line, index) => {
+      const box = line.bbox;
+      const x = Math.max(0, box.x0);
+      const y = Math.max(0, box.y0);
+      const width = Math.min(canvas.width - x, Math.max(1, box.x1 - box.x0));
+      const height = Math.min(canvas.height - y, Math.max(1, box.y1 - box.y0));
+
+      context.fillStyle = sampleBackgroundColor(context, box, canvas.width, canvas.height);
+      context.fillRect(Math.max(0, x - 2), Math.max(0, y - 1), width + 4, height + 2);
+
+      let fontSize = Math.max(8, Math.min(36, height * 0.76));
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+
+      while (
+        fontSize > 7 &&
+        context.measureText(translatedLines[index]).width > width + 2
+      ) {
+        fontSize -= 1;
+        context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+      }
+
+      context.fillStyle = '#202020';
+      context.fillText(
+        translatedLines[index],
+        x + width / 2,
+        y + height / 2,
+        Math.max(1, width)
+      );
+    });
+
+    const ext = extension(file);
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const outputExtension = mime === 'image/jpeg' ? 'jpg' : 'png';
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        value => value ? resolve(value) : reject(new Error('Не удалось создать переведённое изображение.')),
+        mime,
+        0.94
+      );
+    });
+
+    setTranslatedAsset(blob, file, outputExtension);
+    return { blob, text: translatedLines.join('\n') };
+  }
+
+  function showTranslatedAssetPreview(blob) {
+    const pane = $('resultPane');
+    if (!pane || !blob) return;
+
+    let preview = $('resultAssetPreview');
+    if (!preview) {
+      preview = document.createElement('img');
+      preview.id = 'resultAssetPreview';
+      preview.alt = 'Предпросмотр переведённого файла';
+      preview.style.cssText =
+        'display:block;max-width:100%;max-height:560px;' +
+        'object-fit:contain;margin:0 auto 16px;border-radius:12px;';
+      pane.prepend(preview);
+    }
+
+    if (preview.dataset.objectUrl) {
+      URL.revokeObjectURL(preview.dataset.objectUrl);
+    }
+
+    const url = URL.createObjectURL(blob);
+    preview.src = url;
+    preview.dataset.objectUrl = url;
+  }
+
+
   // Показ результата
   function showResult(file, text) {
     if ($('resultMeta')) {
@@ -655,9 +947,20 @@
     }
 
     if ($('resultNote')) {
-      $('resultNote').textContent =
-        'Результат можно скопировать или скачать как TXT. ' +
-        'Для сложной вёрстки оригинала форматирование пока не сохраняется.';
+      const ext = file ? extension(file) : '';
+      if (ext === 'docx' || ext === 'epub') {
+        $('resultNote').textContent =
+          'Готовый файл сохраняет исходную структуру и ресурсы: изображения, обложку, таблицы и стили. Проверьте переносы и оформление отдельных фрагментов.';
+      } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
+        $('resultNote').textContent =
+          'Готовое изображение можно скачать. Исходная картинка сохранена; фон под распознанным текстом восстанавливается приближённо — проверьте результат.';
+      } else if (ext === 'pdf') {
+        $('resultNote').textContent =
+          'PDF пока переводится как текст. Сохранение исходной PDF-вёрстки и редактируемого текстового слоя ещё требует отдельной реализации.';
+      } else {
+        $('resultNote').textContent =
+          'Результат можно скопировать или скачать как TXT. Сохранение исходного оформления для этого формата ещё не подключено.';
+      }
     }
 
     $('resultWrap')?.classList.remove('hidden');
@@ -667,6 +970,9 @@
   function clearSelection() {
     selectedFile = null;
     selectedFileText = '';
+    translatedAssetBlob = null;
+    translatedAssetName = '';
+    lastOcrLines = [];
 
     if ($('fileInput')) {
       $('fileInput').value = '';
@@ -766,6 +1072,9 @@
 
         selectedFile = file;
         selectedFileText = '';
+        translatedAssetBlob = null;
+        translatedAssetName = '';
+        lastOcrLines = [];
 
         updateFileChip(file);
 
@@ -919,9 +1228,30 @@
               'Подготавливаем перевод…'
             );
 
-            const result = await translateInParts(source);
+            const ext = selectedFile ? extension(selectedFile) : '';
+            let result;
+            let asset = null;
+
+            if (selectedFile && ext === 'docx') {
+              const packaged = await translateDocxPackage(selectedFile);
+              result = packaged.text;
+              asset = packaged.blob;
+              setTranslatedAsset(asset, selectedFile, 'docx');
+            } else if (selectedFile && ext === 'epub') {
+              const packaged = await translateEpubPackage(selectedFile);
+              result = packaged.text;
+              asset = packaged.blob;
+              setTranslatedAsset(asset, selectedFile, 'epub');
+            } else if (selectedFile && ['jpg', 'jpeg', 'png'].includes(ext)) {
+              const translatedImage = await translateImageFile(selectedFile);
+              result = translatedImage.text;
+              asset = translatedImage.blob;
+            } else {
+              result = await translateInParts(source);
+            }
 
             showResult(selectedFile, result);
+            if (asset) showTranslatedAssetPreview(asset);
 
             progress(
               100,
