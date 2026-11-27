@@ -3026,7 +3026,11 @@
             selectedFileText = '';
             if (textInput) textInput.value = '';
             progress(100, 'Большой документ выбран. Проверка структуры начнётся при переводе.');
-            setTimeout(hideProgress, 1200);
+            setTimeout(() => {
+              if (selectionToken === fileSelectionToken && selectedFile === file) {
+                hideProgress();
+              }
+            }, 1200);
             return;
           }
 
@@ -3051,7 +3055,11 @@
             'Файл прочитан. Можно переводить.'
           );
 
-          setTimeout(hideProgress, 900);
+          setTimeout(() => {
+            if (selectionToken === fileSelectionToken && selectedFile === file) {
+              hideProgress();
+            }
+          }, 900);
 
         } catch (error) {
           if (selectionToken !== fileSelectionToken || selectedFile !== file) return;
