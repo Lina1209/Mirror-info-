@@ -1975,12 +1975,12 @@
       }
     }
 
-    for (const [partName, originalBytes] of originalMediaParts) {
+    for (const [partName, originalFingerprint] of originalMediaParts) {
       const currentEntry = zip.file(partName);
       if (!currentEntry) throw new Error('Потеряно изображение или медиа Word: ' + partName);
       const currentBytes = await currentEntry.async('uint8array');
-      if (currentBytes.length !== originalBytes.length ||
-          currentBytes.some((byte, index) => byte !== originalBytes[index])) {
+      if (currentBytes.byteLength !== originalFingerprint.size ||
+          await mediaFingerprint(currentBytes) !== originalFingerprint.digest) {
         throw new Error('При переводе изменилось изображение или медиа Word: ' + partName);
       }
     }
@@ -2063,13 +2063,12 @@
       }
     }
 
-    for (const partName of originalMediaParts.keys()) {
+    for (const [partName, originalFingerprint] of originalMediaParts) {
       const verifiedEntry = verifiedZip.file(partName);
       if (!verifiedEntry) throw new Error('В собранном DOCX отсутствует изображение или медиа: ' + partName);
       const verifiedBytes = await verifiedEntry.async('uint8array');
-      const originalBytes = originalMediaParts.get(partName);
-      if (verifiedBytes.length !== originalBytes.length ||
-          verifiedBytes.some((byte, index) => byte !== originalBytes[index])) {
+      if (verifiedBytes.byteLength !== originalFingerprint.size ||
+          await mediaFingerprint(verifiedBytes) !== originalFingerprint.digest) {
         throw new Error('Проверка собранного DOCX выявила изменение изображения или медиа: ' + partName);
       }
     }
