@@ -43,16 +43,28 @@ export async function onRequestPost({ request, env }) {
     }
   }
 
+  if (!env.IP_HASH_SALT) {
+    console.error('IP_HASH_SALT is not configured');
+    return json({ ok: false, error: 'Сервис заявок временно не настроен.' }, 503);
+  }
+
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const ipHash = await sha256(`${env.IP_HASH_SALT || 'mirror-info-rate-limit'}:${ip}`);
+  const ipHash = await sha256(`${env.IP_HASH_SALT}:${ip}`);
   try {
-    const countResult = await env.DB.prepare(
-      "SELECT COUNT(*) AS total FROM order_rate_limits WHERE ip_hash = ? AND created_at >= datetime('now', '-10 minutes')"
-    ).bind(ipHash).first();
-    if ((countResult?.total || 0) >= 5) {
+    // A single conditional INSERT makes the 5-per-10-minute limit safe
+    // against simultaneous requests from the same IP.
+    const rateLimitResult = await env.DB.prepare(
+      `INSERT INTO order_rate_limits (ip_hash)
+       SELECT ?
+       WHERE (SELECT COUNT(*) FROM order_rate_limits
+              WHERE ip_hash = ?
+                AND created_at >= datetime('now', '-10 minutes')) < 5`
+    ).bind(ipHash, ipHash).run();
+
+    if (!rateLimitResult.meta?.changes) {
       return json({ ok: false, error: 'Слишком много заявок. Попробуйте через несколько минут.' }, 429);
     }
-    await env.DB.prepare('INSERT INTO order_rate_limits (ip_hash) VALUES (?)').bind(ipHash).run();
+
     await env.DB.prepare(
       `INSERT INTO orders (id, name, email, phone, payment, service, format, chars, language, file_link, comment, estimate)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
