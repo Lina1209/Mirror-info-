@@ -479,9 +479,10 @@
           const sourceCheckboxWidget = sourceCheckbox.acroField.getWidgets()[0];
           const checkboxRect = sourceCheckboxWidget.getRectangle();
           const reconstructedCheckbox = reconstructedForm.createCheckBox('batch-a.batchA.approved');
+          reconstructedCheckbox.addToPage(merged.getPage(0), checkboxRect);
           if (sourceCheckbox.isChecked()) reconstructedCheckbox.check();
           else reconstructedCheckbox.uncheck();
-          reconstructedCheckbox.addToPage(merged.getPage(0), checkboxRect);
+          reconstructedCheckbox.updateAppearances();
 
           // Rebuild each radio option as a new widget and restore the selected value.
           const sourceRadioWidgets = sourceRadio.acroField.getWidgets();
