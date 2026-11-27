@@ -58,7 +58,7 @@
     text.textContent = translatedText || '';
 
     if (sourceKind === 'pdf' || sourceKind === 'scan' || sourceKind === 'image') {
-      note.textContent = sourceKind === 'image' ? 'Переведённое изображение доступно для скачивания. Исходная фотография сохранена; фон под распознанным текстом восстанавливается приближённо, поэтому проверьте мелкие детали.' : 'PDF пока переводится как извлечённый текст. Для сохранения исходной PDF-вёрстки требуется отдельный этап сборки PDF.';
+      note.textContent = (sourceKind === 'image' || sourceKind === 'scan') ? 'Переведённое изображение доступно для скачивания. Исходная фотография сохранена; фон под распознанным текстом восстанавливается приближённо, поэтому проверьте мелкие детали.' : 'PDF пока переводится как извлечённый текст. Для сохранения исходной PDF-вёрстки требуется отдельный этап сборки PDF.';
     } else if (sourceKind === 'docx' || sourceKind === 'epub' || sourceKind === 'fb2') {
       note.textContent = 'Переведённый DOCX/EPUB собирается на основе исходного файла: изображения, обложки, таблицы, стили и ресурсы сохраняются. Проверьте переносы строк и форматирование отдельных фрагментов после перевода.';
     } else {
@@ -371,7 +371,7 @@
     });
   }
 
-  async function translateXmlBlocks(xmlText, selectors, label) {
+  async function translateXmlBlocks(xmlText, selectors, label, collectedText) {
     const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
     if (doc.querySelector('parsererror')) throw new Error('Не удалось разобрать структуру ' + label + '.');
     const elements = Array.from(doc.querySelectorAll(selectors)).filter((element) => {
@@ -392,6 +392,7 @@
       const leading = original.match(/^\s*/)?.[0] || '';
       const trailing = original.match(/\s*$/)?.[0] || '';
       const translated = await translateText(original.trim());
+      if (collectedText) collectedText.push(translated);
       distributeTranslatedText(leading + translated + trailing, nodes);
       completed += 1;
       setProgress(42 + Math.min(48, completed * 0.35), 'Переводим элементы ' + label + ': ' + completed + '…');
@@ -404,6 +405,7 @@
     const zip = await window.JSZip.loadAsync(await readAsArrayBuffer(file));
     const xmlEntries = zip.file(/^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/i);
     if (!xmlEntries.length) throw new Error('В DOCX не найдена основная структура Word.');
+    const translatedPreview = [];
     for (const entry of xmlEntries) {
       const xml = await entry.async('text');
       const doc = new DOMParser().parseFromString(xml, 'application/xml');
@@ -417,6 +419,7 @@
         const leading = source.match(/^\s*/)?.[0] || '';
         const trailing = source.match(/\s*$/)?.[0] || '';
         const translated = await translateText(source.trim());
+        translatedPreview.push(translated);
         distributeTranslatedText(leading + translated + trailing, textNodes);
         setProgress(42 + (paragraphs.length ? (index + 1) / paragraphs.length * 48 : 0), 'Сохраняем оформление Word: ' + entry.name + '…');
       }
@@ -424,7 +427,7 @@
     }
     return {
       blob: await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
-      text: 'DOCX переведён с сохранением структуры документа.'
+      text: translatedPreview.join('\n\n') || 'В DOCX не найдено текста для перевода.'
     };
   }
 
@@ -435,15 +438,16 @@
     if (!entries.length) throw new Error('В EPUB не найдены XHTML/HTML главы.');
     const selector = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption,caption,dt,dd';
     let translatedFiles = 0;
+    const translatedPreview = [];
     for (const entry of entries) {
       const xml = await entry.async('text');
-      const updated = await translateXmlBlocks(xml, selector, 'главы EPUB');
+      const updated = await translateXmlBlocks(xml, selector, 'главы EPUB', translatedPreview);
       zip.file(entry.name, updated);
       translatedFiles += 1;
     }
     return {
       blob: await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' }),
-      text: 'Переведены текстовые блоки EPUB (' + translatedFiles + ' файлов). Обложка, изображения, стили и остальные ресурсы сохранены.'
+      text: translatedPreview.join('\n\n') || 'В EPUB не найдено текста для перевода.'
     };
   }
 
