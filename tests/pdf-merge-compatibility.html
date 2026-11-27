@@ -171,17 +171,19 @@
         annotation.set(name('AP'), normalAppearance);
         return appearanceRef;
       }
-      function addStatefulAppearanceAnnotation(document, page) {
+      function addStatefulAppearanceAnnotation(document, page, selectedState = 'On') {
         const { PDFDict, PDFName, PDFArray, PDFNumber, PDFRawStream } = window.PDFLib;
         const context = document.context;
         const name = value => PDFName.of(value);
+        if (selectedState !== 'On' && selectedState !== 'Off') throw new Error('Unsupported fixture appearance state');
         const annotation = PDFDict.withContext(context);
         annotation.set(name('Type'), name('Annot'));
         annotation.set(name('Subtype'), name('Stamp'));
         const rect = PDFArray.withContext(context);
-        [300, 215, 340, 255].forEach(value => rect.push(PDFNumber.of(value)));
+        const left = selectedState === 'On' ? 300 : 350;
+        [left, 215, left + 40, 255].forEach(value => rect.push(PDFNumber.of(value)));
         annotation.set(name('Rect'), rect);
-        annotation.set(name('AS'), name('On'));
+        annotation.set(name('AS'), name(selectedState));
         const makeStream = fill => {
           const bbox = PDFArray.withContext(context);
           [0, 0, 40, 40].forEach(value => bbox.push(PDFNumber.of(value)));
@@ -201,7 +203,7 @@
         annotation.set(name('AP'), appearance);
         page.node.addAnnot(context.register(annotation));
       }
-      function hasStatefulAppearance(document, page) {
+      function hasStatefulAppearance(document, page, selectedState = 'On') {
         const { PDFName, PDFDict, PDFRawStream } = window.PDFLib;
         const annots = page.node.Annots();
         if (!annots) return false;
@@ -210,8 +212,9 @@
           const subtype = annotation.get(PDFName.of('Subtype'));
           if (!subtype || subtype.toString() !== '/Stamp') continue;
           const state = annotation.get(PDFName.of('AS'));
+          if (!state || state.toString() !== '/' + selectedState) continue;
           const apRef = annotation.get(PDFName.of('AP'));
-          if (!state || state.toString() !== '/On' || !apRef) return false;
+          if (!apRef) return false;
           const ap = document.context.lookup(apRef);
           const normalRef = ap.get(PDFName.of('N'));
           if (!normalRef) return false;
@@ -222,8 +225,10 @@
           if (!onRef || !offRef) return false;
           const on = document.context.lookup(onRef);
           const off = document.context.lookup(offRef);
+          const selected = document.context.lookup(normal.get(PDFName.of(selectedState)));
           return on instanceof PDFRawStream && off instanceof PDFRawStream
-            && on.contents.length > 0 && off.contents.length > 0;
+            && on.contents.length > 0 && off.contents.length > 0
+            && selected instanceof PDFRawStream && selected.contents.length > 0;
         }
         return false;
       }
@@ -533,7 +538,8 @@
           addNamedDestination(second, 'chapter-start', second.getPages()[0].ref);
           addHighlightAnnotation(first, first.getPages()[0], 'Batch A preserved highlight');
           addHighlightAnnotation(second, second.getPages()[0], 'Batch B preserved highlight');
-          addStatefulAppearanceAnnotation(first, first.getPages()[0]);
+          addStatefulAppearanceAnnotation(first, first.getPages()[0], 'On');
+          addStatefulAppearanceAnnotation(first, first.getPages()[0], 'Off');
           addMarkupAnnotation(first, first.getPages()[0], 'Underline', 'Batch A underline note');
           addMarkupAnnotation(first, first.getPages()[0], 'StrikeOut', 'Batch A strikeout note');
           addMarkupAnnotation(first, first.getPages()[0], 'Text', 'Batch A sticky note');
@@ -543,7 +549,8 @@
           assert(hasTextReply(first, first.getPages()[0]), 'Source A text reply points to its parent annotation');
           assert(hasPopupGeometry(first, first.getPages()[0]), 'Source A popup rectangle and closed state are correct');
           assert(hasNormalAppearance(first, first.getPages()[0], 'Text'), 'Source A text note has a normal appearance stream');
-          assert(hasStatefulAppearance(first, first.getPages()[0]), 'Source A stateful appearance dictionary has /AS /On and both /N states');
+          assert(hasStatefulAppearance(first, first.getPages()[0], 'On'), 'Source A active /On appearance state and both /N streams exist');
+          assert(hasStatefulAppearance(first, first.getPages()[0], 'Off'), 'Source A active /Off appearance state and both /N streams exist');
           const sourceAInspection = await inspect(await first.save());
           const sourceBInspection = await inspect(await second.save());
           report('Source A annotation inventory: ' + JSON.stringify(sourceAInspection.annotationSummary));
@@ -806,7 +813,8 @@
           assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'F') === 4, 'Highlight Print flag survives the merge');
           assert(hasPopupGeometry(merged, merged.getPages()[0]), 'Popup rectangle and closed state survive the merge unchanged');
           assert(hasNormalAppearance(merged, merged.getPages()[0], 'Text'), 'Text note normal appearance stream survives the merge');
-          assert(hasStatefulAppearance(merged, merged.getPages()[0]), 'Stateful appearance dictionary and /AS state survive the merge');
+          assert(hasStatefulAppearance(merged, merged.getPages()[0], 'On'), 'Active /On appearance state and both /N streams survive the merge');
+          assert(hasStatefulAppearance(merged, merged.getPages()[0], 'Off'), 'Active /Off appearance state and both /N streams survive the merge');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
           assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
           assert(namedTargets.get('batch-b-chapter-start') === 2, 'Batch B named destination resolves to merged page 3');
