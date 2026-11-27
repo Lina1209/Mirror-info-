@@ -1656,6 +1656,39 @@
       }
     }
 
+    // Переводим пользовательские описательные свойства Word,
+    // не меняя автора, редактора, даты, идентификаторы и служебные свойства.
+    const corePropertiesEntry = zip.file('docProps/core.xml');
+    if (corePropertiesEntry) {
+      const coreDoc = new DOMParser().parseFromString(
+        await corePropertiesEntry.async('text'),
+        'application/xml'
+      );
+      if (coreDoc.querySelector('parsererror')) {
+        throw new Error('Не удалось прочитать свойства документа Word.');
+      }
+      const coreNamespace = 'http://purl.org/dc/elements/1.1/';
+      const packageCoreNamespace = 'http://schemas.openxmlformats.org/package/2006/metadata/core-properties';
+      const translatableCoreProperties = [
+        [coreNamespace, 'title'],
+        [coreNamespace, 'subject'],
+        [coreNamespace, 'description'],
+        [packageCoreNamespace, 'keywords']
+      ];
+      for (const [namespace, localName] of translatableCoreProperties) {
+        for (const element of Array.from(coreDoc.getElementsByTagNameNS(namespace, localName))) {
+          const original = element.textContent || '';
+          if (!original.trim()) continue;
+          const leading = original.match(/^\\s*/)?.[0] || '';
+          const trailing = original.match(/\\s*$/)?.[0] || '';
+          const translated = await translateInParts(original.trim());
+          previewParts.push(translated);
+          element.textContent = leading + translated + trailing;
+        }
+      }
+      zip.file('docProps/core.xml', new XMLSerializer().serializeToString(coreDoc));
+    }
+
     // Старые OLE-вложения сохраняем в пакете без изменения байтов.
     // Их внутреннее содержимое требует отдельного специализированного парсера.
     const legacyOleParts = zip.file(/word\/embeddings\//i)
