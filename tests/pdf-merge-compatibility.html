@@ -183,7 +183,12 @@
           const normal = appearanceDict.get(PDFName.of('N'));
           if (!normal) return false;
           const stream = document.context.lookup(normal);
-          return stream instanceof PDFRawStream && stream.contents.length > 0;
+          const bbox = stream instanceof PDFRawStream ? stream.dict.get(PDFName.of('BBox')) : null;
+          const streamText = stream instanceof PDFRawStream ? new TextDecoder().decode(stream.contents) : '';
+          return stream instanceof PDFRawStream
+            && stream.contents.length > 0
+            && bbox && bbox.size() === 4
+            && streamText.includes('0.15 0.35 0.75 rg');
         }
         return false;
       }
