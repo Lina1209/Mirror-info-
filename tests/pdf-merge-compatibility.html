@@ -230,8 +230,11 @@
         let formFieldInventory = [];
         try {
           const fields = await pdf.getFieldObjects();
-          formFieldCount = fields ? Object.values(fields).reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0) : 0;
-          formFieldInventory = fields ? Object.entries(fields).flatMap(([name, items]) => (items || []).map(field => ({ name, value: field.value ?? null }))) : [];
+          formFieldInventory = fields ? Object.entries(fields).flatMap(([name, items]) => (items || []).map(field => ({ name, type: field.type ?? null, value: field.value ?? null }))) : [];
+          // PDF.js can expose intermediate non-terminal field nodes as well
+          // as the terminal field and its widget. Count unique typed fields,
+          // not every object returned for a dotted field name.
+          formFieldCount = new Set(formFieldInventory.filter(field => field.type).map(field => field.name)).size;
         } catch (_) {}
         const outline = await pdf.getOutline();
         const outlineTargets = [];
@@ -442,7 +445,10 @@
           const sourceWidgetRect = sourceWidget.getRectangle();
           report('Source text field geometry: ' + JSON.stringify(sourceWidgetRect));
           const reconstructedForm = merged.getForm();
-          const reconstructedField = reconstructedForm.createTextField('batchA.' + sourceTextField.getName());
+          const sourceFieldName = sourceTextField.getName();
+          const batchPrefix = 'batch-a';
+          const namespacedFieldName = sourceFieldName.startsWith(batchPrefix + '.') ? sourceFieldName : batchPrefix + '.' + sourceFieldName;
+          const reconstructedField = reconstructedForm.createTextField(namespacedFieldName);
           const sourceFieldValue = sourceTextField.getText();
           if (sourceFieldValue !== undefined && sourceFieldValue !== null) reconstructedField.setText(sourceFieldValue);
           reconstructedField.addToPage(merged.getPage(sourceWidgetPageIndex), {
@@ -455,7 +461,7 @@
           const reconstructedInspection = await inspect(reconstructedOutput);
           report('Reconstructed AcroForm inventory: ' + JSON.stringify(reconstructedInspection.formFieldInventory));
           assert(reconstructedInspection.formFieldCount === 1, 'Reconstructed text field is present in the merged AcroForm field tree');
-          assert(reconstructedInspection.formFieldInventory.some(field => field.name === 'batchA.batchA.sampleField' && field.value === 'Form value for merge test'), 'Reconstructed text field retains its namespaced name and value');
+          assert(reconstructedInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.sampleField' && field.type === 'text' && field.value === 'Form value for merge test'), 'Reconstructed text field retains its unique namespaced name, text type, and value');
           report('Merged annotation inventory: ' + JSON.stringify(result.annotationSummary));
           report('Detected highlight contents: ' + JSON.stringify(result.highlightContents));
           assert(result.annotationSummary.filter(item => item.subtype === 'Highlight').length === 2, 'Both text highlight annotation objects survive the merge');
