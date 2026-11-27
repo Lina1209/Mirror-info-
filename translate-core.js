@@ -1262,16 +1262,27 @@
     const embeddedBooks = zip.file(/^word\/embeddings\/.*\.xlsx$/i);
     for (const embedded of embeddedBooks) {
       const nestedZip = await JSZip.loadAsync(await embedded.async('uint8array'));
-      const textFiles = nestedZip.file(/^xl\/(sharedStrings|worksheets\/sheet\d+)\.xml$/i);
+      const textFiles = nestedZip.file(/^xl\/(sharedStrings|worksheets\/sheet\d+|charts\/chart\d+)\.xml$/i);
       for (const nestedEntry of textFiles) {
         const doc = new DOMParser().parseFromString(await nestedEntry.async('text'), 'application/xml');
         if (doc.querySelector('parsererror')) {
           throw new Error('Не удалось прочитать встроенную таблицу Excel: ' + nestedEntry.name);
         }
-        const groups = nestedEntry.name.includes('sharedStrings')
-          ? Array.from(doc.getElementsByTagNameNS(sheetNs, 'si'))
-          : Array.from(doc.getElementsByTagNameNS(sheetNs, 'is'));
-        await translateTextGroups(groups, sheetNs, 't');
+        if (nestedEntry.name.includes('sharedStrings')) {
+          const groups = Array.from(doc.getElementsByTagNameNS(sheetNs, 'si'));
+          await translateTextGroups(groups, sheetNs, 't');
+        } else if (nestedEntry.name.includes('/charts/')) {
+          const paragraphs = Array.from(doc.getElementsByTagNameNS(drawingNs, 'p'));
+          await translateTextGroups(paragraphs, drawingNs, 't');
+          const caches = [
+            ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strCache')),
+            ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strLit'))
+          ];
+          await translateTextGroups(caches, chartNs, 'v');
+        } else {
+          const groups = Array.from(doc.getElementsByTagNameNS(sheetNs, 'is'));
+          await translateTextGroups(groups, sheetNs, 't');
+        }
         nestedZip.file(nestedEntry.name, new XMLSerializer().serializeToString(doc));
       }
       zip.file(embedded.name, await nestedZip.generateAsync({ type: 'uint8array' }));
