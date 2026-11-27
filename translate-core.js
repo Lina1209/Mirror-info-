@@ -58,9 +58,9 @@
     text.textContent = translatedText || '';
 
     if (sourceKind === 'pdf' || sourceKind === 'scan' || sourceKind === 'image') {
-      note.textContent = 'Текст переведён в режиме "best effort": структура документа и оформление могут отличаться от исходного файла. Для точного сохранения вёрстки нужен отдельный backend или рабочий исходный DOCX/EPUB.';
+      note.textContent = sourceKind === 'image' ? 'Переведённое изображение доступно для скачивания. Исходная фотография сохранена; фон под распознанным текстом восстанавливается приближённо, поэтому проверьте мелкие детали.' : 'PDF пока переводится как извлечённый текст. Для сохранения исходной PDF-вёрстки требуется отдельный этап сборки PDF.';
     } else if (sourceKind === 'docx' || sourceKind === 'epub' || sourceKind === 'fb2') {
-      note.textContent = 'Новый текст получен с сохранением базовой структуры файла; точное визуальное совпадение с исходной вёрсткой зависит от формата и исходного документа.';
+      note.textContent = 'Переведённый DOCX/EPUB собирается на основе исходного файла: изображения, обложки, таблицы, стили и ресурсы сохраняются. Проверьте переносы строк и форматирование отдельных фрагментов после перевода.';
     } else {
       note.textContent = 'Перевод готов. Его можно скопировать или скачать как текстовый файл.';
     }
@@ -211,6 +211,7 @@
   async function extractImage(file) {
     const worker = await getOcrWorker();
     const result = await worker.recognize(file);
+    lastOcrLines = (result.data.lines || []).filter((line) => line.text && line.text.trim() && line.bbox);
     return result.data.text || '';
   }
 
@@ -287,6 +288,9 @@
   function setFile(file, target = 'file') {
     if (!file) return;
     selectedFile = file;
+    translatedAssetBlob = null;
+    translatedAssetName = '';
+    lastOcrLines = [];
     clearError();
     updateFileChip(file);
     const textInput = byId('textInput');
@@ -318,6 +322,9 @@
 
   function clearSelectedFile() {
     selectedFile = null;
+    translatedAssetBlob = null;
+    translatedAssetName = '';
+    lastOcrLines = [];
     const fileInput = byId('fileInput');
     const galleryInput = byId('galleryInput');
     if (fileInput) fileInput.value = '';
@@ -325,6 +332,208 @@
     byId('fileChip')?.classList.add('is-hidden');
     if (byId('fileChipName')) byId('fileChipName').textContent = '';
     if (byId('fileChipMeta')) byId('fileChipMeta').textContent = '';
+  }
+
+
+
+  let translatedAssetBlob = null;
+  let translatedAssetName = '';
+  let lastOcrLines = [];
+
+  function setTranslatedAsset(blob, file, extension) {
+    translatedAssetBlob = blob;
+    const baseName = (file.name || 'translated-file').replace(/\.[^.]+$/, '');
+    translatedAssetName = baseName + '.translated.' + extension;
+  }
+
+  function distributeTranslatedText(text, nodes) {
+    if (!nodes.length) return;
+    const originalWeights = nodes.map((node) => Math.max(1, (node.textContent || '').length));
+    const totalWeight = originalWeights.reduce((sum, value) => sum + value, 0);
+    const tokens = String(text || '').match(/\S+\s*/g) || [];
+    const buckets = nodes.map(() => '');
+    let tokenIndex = 0;
+    for (let i = 0; i < nodes.length; i += 1) {
+      const target = i === nodes.length - 1 ? Infinity : totalWeight * originalWeights[i] / totalWeight;
+      let assigned = 0;
+      while (tokenIndex < tokens.length && (assigned < target || i === nodes.length - 1)) {
+        const token = tokens[tokenIndex++];
+        buckets[i] += token;
+        assigned += token.length;
+        if (i !== nodes.length - 1 && assigned >= target) break;
+      }
+    }
+    nodes.forEach((node, index) => {
+      node.textContent = buckets[index];
+      if (/^\s|\s$/.test(buckets[index])) {
+        node.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+      }
+    });
+  }
+
+  async function translateXmlBlocks(xmlText, selectors, label) {
+    const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    if (doc.querySelector('parsererror')) throw new Error('Не удалось разобрать структуру ' + label + '.');
+    const elements = Array.from(doc.querySelectorAll(selectors)).filter((element) => {
+      if (element.closest('script,style,pre,code')) return false;
+      return !Array.from(element.children).some((child) => child.matches(selectors));
+    });
+    const serializer = new XMLSerializer();
+    let completed = 0;
+    for (const element of elements) {
+      const walker = doc.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.textContent && node.textContent.trim()) nodes.push(node);
+      }
+      const original = nodes.map((item) => item.textContent).join('');
+      if (!original.trim()) continue;
+      const leading = original.match(/^\s*/)?.[0] || '';
+      const trailing = original.match(/\s*$/)?.[0] || '';
+      const translated = await translateText(original.trim());
+      distributeTranslatedText(leading + translated + trailing, nodes);
+      completed += 1;
+      setProgress(42 + Math.min(48, completed * 0.35), 'Переводим элементы ' + label + ': ' + completed + '…');
+    }
+    return serializer.serializeToString(doc);
+  }
+
+  async function translateDocxPackage(file) {
+    await loadScript('jszip');
+    const zip = await window.JSZip.loadAsync(await readAsArrayBuffer(file));
+    const xmlEntries = zip.file(/^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/i);
+    if (!xmlEntries.length) throw new Error('В DOCX не найдена основная структура Word.');
+    for (const entry of xmlEntries) {
+      const xml = await entry.async('text');
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      if (doc.querySelector('parsererror')) throw new Error('Не удалось прочитать ' + entry.name + '.');
+      const paragraphs = Array.from(doc.getElementsByTagNameNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'p'));
+      for (let index = 0; index < paragraphs.length; index += 1) {
+        const paragraph = paragraphs[index];
+        const textNodes = Array.from(paragraph.getElementsByTagNameNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 't'));
+        const source = textNodes.map((node) => node.textContent || '').join('');
+        if (!source.trim()) continue;
+        const leading = source.match(/^\s*/)?.[0] || '';
+        const trailing = source.match(/\s*$/)?.[0] || '';
+        const translated = await translateText(source.trim());
+        distributeTranslatedText(leading + translated + trailing, textNodes);
+        setProgress(42 + (paragraphs.length ? (index + 1) / paragraphs.length * 48 : 0), 'Сохраняем оформление Word: ' + entry.name + '…');
+      }
+      zip.file(entry.name, new XMLSerializer().serializeToString(doc));
+    }
+    return {
+      blob: await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+      text: 'DOCX переведён с сохранением структуры документа.'
+    };
+  }
+
+  async function translateEpubPackage(file) {
+    await loadScript('jszip');
+    const zip = await window.JSZip.loadAsync(await readAsArrayBuffer(file));
+    const entries = zip.file(/\.(xhtml|html|htm)$/i).filter((entry) => !entry.dir);
+    if (!entries.length) throw new Error('В EPUB не найдены XHTML/HTML главы.');
+    const selector = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption,caption,dt,dd';
+    let translatedFiles = 0;
+    for (const entry of entries) {
+      const xml = await entry.async('text');
+      const updated = await translateXmlBlocks(xml, selector, 'главы EPUB');
+      zip.file(entry.name, updated);
+      translatedFiles += 1;
+    }
+    return {
+      blob: await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' }),
+      text: 'Переведены текстовые блоки EPUB (' + translatedFiles + ' файлов). Обложка, изображения, стили и остальные ресурсы сохранены.'
+    };
+  }
+
+  function samplePatchColor(context, box, width, height) {
+    const x0 = Math.max(0, Math.floor(box.x0));
+    const x1 = Math.min(width, Math.ceil(box.x1));
+    const y0 = Math.max(0, Math.floor(box.y0));
+    const y1 = Math.min(height, Math.ceil(box.y1));
+    const samples = [];
+    const step = Math.max(2, Math.floor((x1 - x0) / 8));
+    for (let x = x0; x < x1; x += step) {
+      for (const y of [Math.max(0, y0 - 2), Math.min(height - 1, y1 + 2)]) {
+        const pixel = context.getImageData(x, y, 1, 1).data;
+        samples.push([pixel[0], pixel[1], pixel[2]]);
+      }
+    }
+    if (!samples.length) return 'rgba(255,255,255,0.94)';
+    const average = [0, 1, 2].map((channel) => Math.round(samples.reduce((sum, pixel) => sum + pixel[channel], 0) / samples.length));
+    return 'rgba(' + average[0] + ',' + average[1] + ',' + average[2] + ',0.96)';
+  }
+
+  async function translateImageFile(file) {
+    const worker = await getOcrWorker();
+    const result = await worker.recognize(file);
+    const lines = (result.data.lines || []).filter((line) => line.text && line.text.trim() && line.bbox);
+    if (!lines.length) throw new Error('OCR распознал текст, но не вернул координаты строк. Попробуйте более чёткое JPG/PNG-изображение.');
+    const translatedLines = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      translatedLines.push(await translateText(lines[index].text.trim()));
+      setProgress(45 + ((index + 1) / lines.length) * 40, 'Переводим строки на изображении: ' + (index + 1) + ' из ' + lines.length + '…');
+    }
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('Не удалось открыть исходное изображение.'));
+        image.src = objectUrl;
+      });
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Не удалось подготовить изображение для перевода.');
+    context.drawImage(image, 0, 0);
+    lines.forEach((line, index) => {
+      const box = line.bbox;
+      const x = Math.max(0, box.x0);
+      const y = Math.max(0, box.y0);
+      const width = Math.min(canvas.width - x, Math.max(1, box.x1 - box.x0));
+      const height = Math.min(canvas.height - y, Math.max(1, box.y1 - box.y0));
+      context.fillStyle = samplePatchColor(context, box, canvas.width, canvas.height);
+      context.fillRect(x - 2, y - 1, width + 4, height + 2);
+      let fontSize = Math.max(9, Math.min(36, height * 0.78));
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+      while (fontSize > 8 && context.measureText(translatedLines[index]).width > width + 2) {
+        fontSize -= 1;
+        context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+      }
+      context.fillStyle = '#202020';
+      context.fillText(translatedLines[index], x + width / 2, y + height / 2, Math.max(1, width));
+    });
+    const extension = extensionOf(file);
+    const mime = extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const outputExtension = mime === 'image/jpeg' ? 'jpg' : 'png';
+    const blob = await new Promise((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Не удалось сформировать переведённое изображение.')), mime, 0.94));
+    setTranslatedAsset(blob, file, outputExtension);
+    return { blob, text: translatedLines.join('\n') };
+  }
+
+  function showTranslatedAssetPreview(blob) {
+    const pane = byId('resultPane');
+    if (!pane || !blob) return;
+    let preview = byId('resultAssetPreview');
+    if (!preview) {
+      preview = document.createElement('img');
+      preview.id = 'resultAssetPreview';
+      preview.alt = 'Предпросмотр переведённого файла';
+      preview.style.cssText = 'display:block;max-width:100%;max-height:560px;object-fit:contain;margin:0 auto 16px;border-radius:12px';
+      pane.prepend(preview);
+    }
+    if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+    const url = URL.createObjectURL(blob);
+    preview.src = url;
+    preview.dataset.objectUrl = url;
   }
 
   function bindCopyDownload() {
@@ -339,6 +548,15 @@
     });
     byId('downloadBtn')?.addEventListener('click', () => {
       const text = byId('resultText')?.textContent || '';
+      if (translatedAssetBlob) {
+        const url = URL.createObjectURL(translatedAssetBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = translatedAssetName || 'mirror-translation';
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        return;
+      }
       if (!text.trim()) return;
       const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
       const link = document.createElement('a');
@@ -440,11 +658,30 @@
       translateBtn.disabled = true;
       setProgress(35, 'Подготавливаем перевод…');
       try {
-        const translated = await translateText(enforceTextLimit(sourceText));
-        setProgress(100, 'Перевод готов.');
         const sourceKind = selectedFile ? extensionOf(selectedFile) : 'text';
+        let translated;
+        let translatedAsset = null;
+        if (selectedFile && sourceKind === 'docx') {
+          const packageResult = await translateDocxPackage(selectedFile);
+          translatedAsset = packageResult.blob;
+          translated = packageResult.text;
+          setTranslatedAsset(translatedAsset, selectedFile, 'docx');
+        } else if (selectedFile && sourceKind === 'epub') {
+          const packageResult = await translateEpubPackage(selectedFile);
+          translatedAsset = packageResult.blob;
+          translated = packageResult.text;
+          setTranslatedAsset(translatedAsset, selectedFile, 'epub');
+        } else if (selectedFile && ['jpg', 'jpeg', 'png'].includes(sourceKind)) {
+          const imageResult = await translateImageFile(selectedFile);
+          translatedAsset = imageResult.blob;
+          translated = imageResult.text;
+        } else {
+          translated = await translateText(enforceTextLimit(sourceText));
+        }
+        setProgress(100, 'Перевод готов.');
         const normalizedKind = sourceKind === 'pdf' ? 'pdf' : sourceKind === 'docx' ? 'docx' : sourceKind === 'epub' ? 'epub' : sourceKind === 'fb2' ? 'fb2' : (sourceKind === 'jpg' || sourceKind === 'jpeg' || sourceKind === 'png' || sourceKind === 'webp' || sourceKind === 'gif' || sourceKind === 'bmp') ? 'scan' : 'text';
         showResult(`${byId('srcLang')?.value || 'auto'} → ${byId('tgtLang')?.value || 'ru'}`, translated, normalizedKind);
+        if (translatedAsset) showTranslatedAssetPreview(translatedAsset);
         setTimeout(hideProgress, 500);
       } catch (error) {
         hideProgress();
