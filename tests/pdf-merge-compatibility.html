@@ -94,6 +94,9 @@
         annotation.set(name('QuadPoints'), numbers([45, 270, 260, 270, 45, 245, 260, 245]));
         annotation.set(name('Contents'), PDFString.of(contents));
         annotation.set(name('C'), numbers([1, 1, 0]));
+        annotation.set(name('T'), PDFString.of('Lina Test Author'));
+        annotation.set(name('M'), PDFString.of('D:20261127100000Z'));
+        annotation.set(name('CA'), PDFNumber.of(0.65));
         page.node.addAnnot(context.register(annotation));
       }
       function readRawAnnotationContents(document, page, subtype) {
@@ -129,6 +132,21 @@
           return values;
         }
         return [];
+      }
+      function readRawAnnotationScalar(document, page, subtype, key) {
+        const { PDFName, PDFString, PDFNumber } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const kind = annotation.get(PDFName.of('Subtype'));
+          if (!kind || kind.toString() !== '/' + subtype) continue;
+          const raw = annotation.get(PDFName.of(key));
+          if (raw instanceof PDFString) return raw.decodeText();
+          if (raw instanceof PDFNumber) return raw.asNumber();
+          return null;
+        }
+        return null;
       }
       function addMarkupAnnotation(document, page, subtype, contents) {
         const { PDFDict, PDFName, PDFArray, PDFNumber, PDFString } = window.PDFLib;
@@ -312,6 +330,9 @@
           assert(readRawAnnotationContents(first, first.getPages()[0], 'Highlight').includes('Batch A preserved highlight'), 'Source A highlight Contents exists in the raw PDF annotation dictionary');
           assert(JSON.stringify(readRawAnnotationNumbers(first, first.getPages()[0], 'Highlight', 'QuadPoints')) === JSON.stringify([45, 270, 260, 270, 45, 245, 260, 245]), 'Source A highlight QuadPoints fixture is correct');
           assert(JSON.stringify(readRawAnnotationNumbers(first, first.getPages()[0], 'Highlight', 'C')) === JSON.stringify([1, 1, 0]), 'Source A highlight color fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'T') === 'Lina Test Author', 'Source A highlight author fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'M') === 'D:20261127100000Z', 'Source A highlight modification date fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'CA') === 0.65, 'Source A highlight opacity fixture is correct');
           assert(readRawAnnotationContents(second, second.getPages()[0], 'Highlight').includes('Batch B preserved highlight'), 'Source B highlight Contents exists in the raw PDF annotation dictionary');
           for (const subtype of ['Underline', 'StrikeOut', 'Text']) {
             assert(readRawAnnotationContents(first, first.getPages()[0], subtype).includes('Batch A ' + (subtype === 'Underline' ? 'underline' : subtype === 'StrikeOut' ? 'strikeout' : 'sticky note') + (subtype === 'Text' ? '' : ' note')), 'Source A ' + subtype + ' Contents exists in the raw PDF annotation dictionary');
@@ -548,6 +569,9 @@
           assert(mergedHighlightContents.includes('Batch A preserved highlight'), 'Batch A highlight Contents survive in the merged raw annotation dictionary');
           assert(JSON.stringify(readRawAnnotationNumbers(merged, merged.getPages()[0], 'Highlight', 'QuadPoints')) === JSON.stringify([45, 270, 260, 270, 45, 245, 260, 245]), 'Batch A highlight QuadPoints survive the merge unchanged');
           assert(JSON.stringify(readRawAnnotationNumbers(merged, merged.getPages()[0], 'Highlight', 'C')) === JSON.stringify([1, 1, 0]), 'Batch A highlight color survives the merge unchanged');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'T') === 'Lina Test Author', 'Batch A highlight author survives the merge unchanged');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'M') === 'D:20261127100000Z', 'Batch A highlight modification date survives the merge unchanged');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'CA') === 0.65, 'Batch A highlight opacity survives the merge unchanged');
           assert(JSON.stringify(readRawAnnotationNumbers(merged, merged.getPages()[0], 'Underline', 'QuadPoints')) === JSON.stringify([45, 240, 260, 240, 45, 215, 260, 215]), 'Underline QuadPoints survive the merge unchanged');
           assert(JSON.stringify(readRawAnnotationNumbers(merged, merged.getPages()[0], 'StrikeOut', 'QuadPoints')) === JSON.stringify([45, 240, 260, 240, 45, 215, 260, 215]), 'StrikeOut QuadPoints survive the merge unchanged');
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Underline').includes('Batch A underline note'), 'Underline Contents survive in the merged raw annotation dictionary');
