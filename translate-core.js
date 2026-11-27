@@ -2210,25 +2210,28 @@
         context.fillStyle = backgroundColor;
         context.fillRect(patchX, patchY, patchWidth, patchHeight);
 
-        let fontSize = Math.max(8, Math.min(36, height * 0.76));
+        let fontSize = Math.max(5, Math.min(36, height * 0.76));
         context.textAlign = 'center';
         context.textBaseline = 'middle';
         context.font = '600 ' + fontSize + 'px Arial, sans-serif';
 
+        // Подбираем читаемый размер по ширине OCR-рамки. Не используем
+        // принудительное сжатие fillText до тех пор, пока шрифт не достигнет 5 px.
         while (
-          fontSize > 7 &&
-          context.measureText(translatedLines[index]).width > width + 2
+          fontSize > 5 &&
+          context.measureText(translatedLines[index]).width > width
         ) {
-          fontSize -= 1;
+          fontSize = Math.max(5, fontSize - 1);
           context.font = '600 ' + fontSize + 'px Arial, sans-serif';
         }
 
         context.fillStyle = '#202020';
+        const measuredWidth = context.measureText(translatedLines[index]).width;
         context.fillText(
           translatedLines[index],
           x + width / 2,
           y + height / 2,
-          Math.max(1, width)
+          measuredWidth > width ? Math.max(1, width) : measuredWidth
         );
       });
 
