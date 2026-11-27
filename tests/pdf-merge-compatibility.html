@@ -212,8 +212,8 @@
             const sourceChapter = source.context.lookup(sourceChapterRef);
             const sourceSectionRef = sourceChapter.get(PDFName.of('First'));
             const sourceSection = source.context.lookup(sourceSectionRef);
-            const chapterTitle = source.context.lookup(sourceChapter.get(PDFName.of('Title'))).decodeText();
-            const sectionTitle = source.context.lookup(sourceSection.get(PDFName.of('Title'))).decodeText();
+            const chapterTitle = sourceChapter.get(PDFName.of('Title')).decodeText();
+            const sectionTitle = sourceSection.get(PDFName.of('Title')).decodeText();
             previousOutlineRef = addOutlineEntry(
               merged,
               outlineRootRef,
