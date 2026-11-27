@@ -1267,7 +1267,7 @@
   }
 
   function readableTextColor(backgroundColor) {
-    const values = String(backgroundColor || '').match(/[\\d.]+/g);
+    const values = String(backgroundColor || '').match(/[\d.]+/g);
     if (!values || values.length < 3) return '#202020';
 
     const channels = values.slice(0, 3).map(value => {
