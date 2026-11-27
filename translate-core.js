@@ -21,6 +21,7 @@
   let ocrWorkerPromise = null;
   let ocrWorkerLanguage = '';
   let lastOcrLanguage = '';
+  let pdfUnicodeFontPromise = null;
 
   const $ = (id) => document.getElementById(id);
 
@@ -135,6 +136,39 @@
     }
 
     return window.jspdf.jsPDF;
+  }
+
+  async function loadPdfUnicodeFont() {
+    if (!pdfUnicodeFontPromise) {
+      pdfUnicodeFontPromise = (async () => {
+        const response = await fetch(
+          'https://raw.githubusercontent.com/notofonts/noto-fonts/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf',
+          { mode: 'cors' }
+        );
+        if (!response.ok) {
+          throw new Error('Не удалось загрузить шрифт для текстового слоя PDF.');
+        }
+
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        let binary = '';
+        const chunkSize = 8192;
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+        }
+        return btoa(binary);
+      })().catch(error => {
+        pdfUnicodeFontPromise = null;
+        throw error;
+      });
+    }
+
+    return pdfUnicodeFontPromise;
+  }
+
+  function registerPdfUnicodeFont(pdf, fontData) {
+    pdf.addFileToVFS('NotoSans-Regular.ttf', fontData);
+    pdf.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+    pdf.setFont('NotoSans', 'normal');
   }
 
   async function ensureMammoth() {
@@ -884,6 +918,7 @@
 
     const pdfjs = await ensurePdfJs();
     const JsPDF = await ensureJsPdf();
+    const unicodeFontData = await loadPdfUnicodeFont();
     const sourcePdf = await pdfjs.getDocument({
       data: await file.arrayBuffer(),
       isEvalSupported: false
@@ -957,6 +992,7 @@
             );
           }
 
+          const textOverlay = [];
           lines.forEach((line, index) => {
             const box = line.bbox;
             const x = Math.max(0, Math.floor(box.x0));
@@ -988,6 +1024,14 @@
               y + height / 2,
               Math.max(1, width)
             );
+            textOverlay.push({
+              text: translatedLines[index],
+              x,
+              y,
+              width,
+              height,
+              fontSize
+            });
           });
 
           const pageWidth = viewport.width / scale;
@@ -1025,6 +1069,35 @@
             undefined,
             'FAST'
           );
+
+          registerPdfUnicodeFont(outputPdf, unicodeFontData);
+          const pointScaleX = pageWidth / canvas.width;
+          const pointScaleY = pageHeight / canvas.height;
+          textOverlay.forEach(item => {
+            if (!item.text || !item.text.trim()) return;
+
+            const maxWidth = Math.max(1, item.width * pointScaleX);
+            let overlayFontSize = Math.max(4, item.fontSize * pointScaleY);
+            outputPdf.setFontSize(overlayFontSize);
+            const measuredWidth = outputPdf.getTextWidth(item.text);
+            if (measuredWidth > maxWidth) {
+              overlayFontSize = Math.max(
+                4,
+                overlayFontSize * maxWidth / measuredWidth
+              );
+              outputPdf.setFontSize(overlayFontSize);
+            }
+
+            outputPdf.text(
+              item.text,
+              item.x * pointScaleX,
+              (item.y + item.height / 2) * pointScaleY,
+              {
+                renderingMode: 'invisible',
+                baseline: 'middle'
+              }
+            );
+          });
         } finally {
           if (canvas) {
             canvas.width = 0;
