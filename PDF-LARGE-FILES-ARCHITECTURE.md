@@ -231,3 +231,17 @@ GitHub Actions run `45979562565` completed successfully in Chromium on 2026-11-2
 The checkbox needed its widget created before restoring its checked state and refreshing appearances. The radio field's widget export names are index-like values (`0`, `1`), not the human-readable labels; the fixture verifies the second selected widget rather than claiming the export value itself is the label.
 
 **Scope remains narrow:** this is a synthetic fixture with one page, one text field, one checkbox, one two-widget radio group, and one dropdown. It does not establish fidelity for arbitrary PDF forms, multi-page/multi-widget fields, field flags, tooltips, validation/calculation actions, custom appearance streams, choice fields with editable/custom values, signatures, XFA, JavaScript actions, or malformed/real-world AcroForms. The underlying `copyPages`-only merge still reports zero document-level AcroForm fields; the successful result is from the separate reconstruction prototype. The summary's original pre-reconstruction field-count diagnostic remains zero and must not be read as the final reconstructed field count. Do not claim general AcroForm preservation.
+
+
+## Verified synthetic AcroForm text, checkbox, radio, and dropdown reconstruction
+
+GitHub Actions run 45979562565 completed successfully in Chromium on 2026-11-27 (commit c858ce4). The fixture reconstructs four simple field types into the merged document after page copying, then reopens the saved bytes with PDF.js and checks their terminal field values.
+
+Verified in this synthetic fixture:
+- Text field: unique namespaced field name, text type, and original string value survive.
+- Checkbox: checked state survives; PDF.js reports the checked export value `Yes`, not `Off`.
+- Radio group: two source option names map one-to-one to two widgets; the fixture selects the second source option (`standard`) and verifies PDF.js reports selected widget index/value `1` on both radio widget entries.
+- Dropdown: option list is recreated and selected value `French` survives as a `combobox`.
+- The saved merged PDF reopens successfully with PDF.js; the broader page, rotation, links, named destinations, outlines, and tested annotation checks also pass in the same run.
+
+This is a bounded prototype result, not general AcroForm compatibility. It uses small synthetic forms with simple field names, one page per source, one widget for text/checkbox/dropdown, and a two-option radio group. Still unverified: real-world forms, arbitrary export names and escaped PDF names, multiple widgets per text/checkbox/dropdown field, additional radio states, field flags (read-only/required/locked), tooltips, formatting/validation/calculation actions, custom appearance fidelity, fonts, Unicode edge cases, signatures, XFA, and form JavaScript. The baseline `copyPages` operation still loses the document-level AcroForm field tree; only the separate reconstruction prototype restores these tested simple fields. Do not describe arbitrary interactive forms as fully preserved.
