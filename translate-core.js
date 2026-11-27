@@ -1385,7 +1385,6 @@
     const embeddedBooks = zip.file(/^word\/embeddings\/.*\.xlsx$/i);
     for (const embedded of embeddedBooks) {
       const nestedZip = await JSZip.loadAsync(await embedded.async('uint8array'));
-      validatePackageLimits(nestedZip, 'Встроенная презентация PowerPoint');
       validatePackageLimits(nestedZip, 'Встроенная книга Excel');
       const textFiles = nestedZip.file(/^xl\/(sharedStrings|worksheets\/sheet\d+|charts\/chart\d+)\.xml$/i);
       for (const nestedEntry of textFiles) {
@@ -1420,6 +1419,7 @@
     const presentationNs = 'http://schemas.openxmlformats.org/presentationml/2006/main';
     for (const embedded of embeddedPresentations) {
       const nestedZip = await JSZip.loadAsync(await embedded.async('uint8array'));
+      validatePackageLimits(nestedZip, 'Встроенная презентация PowerPoint');
       const presentationParts = nestedZip.file(/^ppt\/(slides\/slide\d+|notesSlides\/notesSlide\d+|slideLayouts\/slideLayout\d+|slideMasters\/slideMaster\d+|charts\/chart\d+|diagrams\/.*)\.xml$/i);
       for (const nestedEntry of presentationParts) {
         const doc = new DOMParser().parseFromString(await nestedEntry.async('text'), 'application/xml');
