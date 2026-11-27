@@ -1581,9 +1581,22 @@
     // Медиа Word (изображения, обложки и другие вложенные файлы) должны
     // остаться побайтно неизменными: переводим подписи, а не сами картинки.
     const protectedMediaParts = zip.file(/^word\/media\/.*$/i).filter(entry => !entry.dir);
+    // Не удерживаем все изображения в памяти одновременно: сохраняем SHA-256
+    // и размер, а байты читаем и освобождаем по одному.
+    async function mediaFingerprint(bytes) {
+      if (!globalThis.crypto?.subtle) {
+        throw new Error('Браузер не поддерживает безопасную проверку изображений DOCX (SHA-256).');
+      }
+      const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+      return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    }
     const originalMediaParts = new Map();
     for (const entry of protectedMediaParts) {
-      originalMediaParts.set(entry.name, await entry.async('uint8array'));
+      const bytes = await entry.async('uint8array');
+      originalMediaParts.set(entry.name, {
+        size: bytes.byteLength,
+        digest: await mediaFingerprint(bytes)
+      });
     }
     const originalProtectedParts = new Map();
     for (const entry of protectedWordParts) {
@@ -1996,14 +2009,14 @@
     const verifiedZip = await JSZip.loadAsync(await blob.arrayBuffer());
     validatePackageLimits(verifiedZip, 'Собранный DOCX');
     // Дополнительная проверка медиаданных после окончательной сериализации ZIP.
-    for (const [partName, originalBytes] of originalMediaParts) {
+    for (const [partName, originalFingerprint] of originalMediaParts) {
       const verifiedMedia = verifiedZip.file(partName);
       if (!verifiedMedia) {
         throw new Error('После окончательной упаковки DOCX отсутствует изображение: ' + partName);
       }
       const finalBytes = await verifiedMedia.async('uint8array');
-      if (finalBytes.length !== originalBytes.length ||
-          finalBytes.some((byte, index) => byte !== originalBytes[index])) {
+      if (finalBytes.byteLength !== originalFingerprint.size ||
+          await mediaFingerprint(finalBytes) !== originalFingerprint.digest) {
         throw new Error('После окончательной упаковки DOCX изменилось изображение: ' + partName);
       }
     }
