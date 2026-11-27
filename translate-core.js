@@ -1174,6 +1174,16 @@
   async function translateDocxPackage(file, nestingLevel = 0) {
     const JSZip = await ensureJSZip();
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    // Фиксируем состав пакета и байты relationship-файлов: перевод не должен
+    // удалять ресурсы или менять связи между документом, рисунками и диаграммами.
+    const originalPartNames = Object.keys(zip.files).filter(name => !zip.files[name].dir);
+    const originalRelationships = new Map();
+    for (const relationship of zip.file(/\.rels$/i)) {
+      originalRelationships.set(
+        relationship.name,
+        await relationship.async('uint8array')
+      );
+    }
     const entries = zip.file(/^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/i).concat(zip.file(/^word\/glossary\/document\.xml$/i));
 
     if (!entries.length) {
@@ -1367,6 +1377,27 @@
     }
     // Поля Word (instrText), формулы OMML, коды нумерации и связи объектов
     // намеренно не переписываются: переводятся только обычные текстовые узлы w:t.
+
+    // Перед упаковкой проверяем, что ни одна исходная часть не исчезла,
+    // а связи OOXML остались побайтно прежними.
+    for (const partName of originalPartNames) {
+      if (!zip.file(partName)) {
+        throw new Error('При сборке DOCX потеряна часть исходного пакета: ' + partName);
+      }
+    }
+    for (const [relationshipName, originalBytes] of originalRelationships) {
+      const currentEntry = zip.file(relationshipName);
+      if (!currentEntry) {
+        throw new Error('Потеряны связи DOCX: ' + relationshipName);
+      }
+      const currentBytes = await currentEntry.async('uint8array');
+      if (
+        currentBytes.length !== originalBytes.length ||
+        currentBytes.some((byte, index) => byte !== originalBytes[index])
+      ) {
+        throw new Error('Изменились связи объектов DOCX: ' + relationshipName);
+      }
+    }
 
     const blob = await zip.generateAsync({
       type: 'blob',
