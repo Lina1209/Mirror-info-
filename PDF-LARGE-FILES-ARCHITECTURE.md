@@ -141,3 +141,14 @@ The current test proves only the listed page-level properties for synthetic file
 The browser harness now creates a simple two-level outline tree in each source PDF, reads the source outline titles and hierarchy, reconstructs the combined outline tree in the merged document, and remaps each outline destination to the corresponding copied page. The expected result is four outline entries: one chapter and one nested section for each batch, targeting merged page indexes 0, 1, 2, and 3. This is a deliberately narrow synthetic fixture.
 
 This test does **not** yet prove preservation of arbitrary real-world PDF outlines. It does not cover named destinations, non-page actions, open/closed state, outline color/style flags, Unicode edge cases, malformed trees, or deeply nested structures. The prototype rebuilds a simple outline hierarchy; it is not a byte-for-byte copy of all outline dictionary properties. Wait for the automated Chromium run before recording it as verified.
+
+
+## Verified synthetic PDF outline transfer
+
+GitHub Actions run `45976879708` completed successfully in Chromium on 2026-11-27 (commit `596ddf1`). The fixture creates a two-level outline in each of two source PDFs, reconstructs the combined outline hierarchy in the merged PDF, and remaps chapter/section destinations to the copied page references. PDF.js reopened the result and verified four entries:
+- Batch A chapter → merged page 1; nested Batch A section → merged page 2.
+- Batch B chapter → merged page 3; nested Batch B section → merged page 4.
+
+The same run also passed the existing four-page, geometry, rotation, text extraction, external URI, internal link, and metadata assertions.
+
+**Scope warning:** this verifies only the synthetic outline shape created by the harness and the tested page-destination mapping. It does not establish preservation of arbitrary source outline dictionaries or all real-world PDF bookmark variants. Named destinations, remote/URI actions, open-state flags, styles/colors, malformed outline trees, unusual Unicode titles, forms, signatures, attachments, and tagged structure remain unverified. The test reconstructs a simple outline hierarchy; it is not evidence of full PDF feature preservation or production merge readiness.
