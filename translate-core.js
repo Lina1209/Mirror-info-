@@ -537,6 +537,30 @@
     return pages.join('\n\n');
   }
 
+  async function validateImageSize(file) {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    try {
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('Не удалось прочитать размеры изображения.'));
+        image.src = url;
+      });
+      const pixels = image.naturalWidth * image.naturalHeight;
+      if (!image.naturalWidth || !image.naturalHeight) {
+        throw new Error('Изображение имеет некорректные размеры.');
+      }
+      if (pixels > 32000000) {
+        throw new Error('Изображение превышает безопасный предел 32 мегапикселя. Уменьшите его размер и загрузите снова.');
+      }
+    } finally {
+      image.onload = null;
+      image.onerror = null;
+      image.src = '';
+      URL.revokeObjectURL(url);
+    }
+  }
+
   // Определение формата и извлечение текста
   async function extractFile(file) {
     if (!file) {
@@ -556,6 +580,7 @@
         'bmp', 'tif', 'tiff'
       ].includes(ext)
     ) {
+      await validateImageSize(file);
       return await ocrImage(file);
     }
 
@@ -1063,34 +1088,38 @@
   }
 
   function sampleBackgroundColor(context, box, width, height) {
-    const left = Math.max(0, Math.floor(box.x0));
-    const right = Math.min(width - 1, Math.ceil(box.x1));
-    const top = Math.max(0, Math.floor(box.y0));
-    const bottom = Math.min(height - 1, Math.ceil(box.y1));
-    const samples = [];
-    const horizontalStep = Math.max(2, Math.floor((right - left) / 12));
-    const verticalStep = Math.max(2, Math.floor((bottom - top) / 8));
-
-    // Берём точки по четырём сторонам рамки; медиана меньше зависит
-    // от отдельных тёмных пикселей, линий и случайных деталей фона.
-    for (let x = left; x <= right; x += horizontalStep) {
-      for (const y of [
-        Math.max(0, top - 3),
-        Math.min(height - 1, bottom + 3)
-      ]) {
-        const pixel = context.getImageData(x, y, 1, 1).data;
-        samples.push([pixel[0], pixel[1], pixel[2]]);
-      }
+    if (!context || !box || width < 1 || height < 1) {
+      return 'rgba(255,255,255,0.95)';
     }
 
-    for (let y = top; y <= bottom; y += verticalStep) {
-      for (const x of [
-        Math.max(0, left - 3),
-        Math.min(width - 1, right + 3)
-      ]) {
-        const pixel = context.getImageData(x, y, 1, 1).data;
+    const left = Math.max(0, Math.min(width - 1, Math.floor(box.x0)));
+    const right = Math.max(0, Math.min(width - 1, Math.ceil(box.x1)));
+    const top = Math.max(0, Math.min(height - 1, Math.floor(box.y0)));
+    const bottom = Math.max(0, Math.min(height - 1, Math.ceil(box.y1)));
+    if (right < left || bottom < top) return 'rgba(255,255,255,0.95)';
+
+    const samples = [];
+    const horizontalStep = Math.max(2, Math.floor(Math.max(1, right - left) / 12));
+    const verticalStep = Math.max(2, Math.floor(Math.max(1, bottom - top) / 8));
+    const readPixel = (x, y) => {
+      const safeX = Math.max(0, Math.min(width - 1, x));
+      const safeY = Math.max(0, Math.min(height - 1, y));
+      try {
+        const pixel = context.getImageData(safeX, safeY, 1, 1).data;
         samples.push([pixel[0], pixel[1], pixel[2]]);
+      } catch (_) {
+        // Если браузер не может прочитать отдельный пиксель, пропускаем его.
       }
+    };
+
+    // Медиана точек по четырём сторонам рамки.
+    for (let x = left; x <= right; x += horizontalStep) {
+      readPixel(x, top - 3);
+      readPixel(x, bottom + 3);
+    }
+    for (let y = top; y <= bottom; y += verticalStep) {
+      readPixel(left - 3, y);
+      readPixel(right + 3, y);
     }
 
     if (!samples.length) return 'rgba(255,255,255,0.95)';
