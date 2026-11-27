@@ -18,6 +18,7 @@
 
   let selectedFileText = '';
   let selectedFile = null;
+  let selectedFilePhysicalPages = null;
   let fileSelectionToken = 0;
   let activeTranslationToken = 0;
   let translationInProgress = false;
@@ -34,12 +35,14 @@
   // Единая точка связи загрузчика с панелью статистики документа.
   function publishDocumentStats(text, file) {
     if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') return;
-    window.dispatchEvent(new CustomEvent('mirror-info:document-loaded', {
-      detail: {
-        text: String(text || ''),
-        fileName: file?.name || 'Введённый текст'
-      }
-    }));
+    const detail = {
+      text: String(text || ''),
+      fileName: file?.name || 'Введённый текст'
+    };
+    if (Number.isInteger(selectedFilePhysicalPages) && selectedFilePhysicalPages > 0) {
+      detail.physicalPages = selectedFilePhysicalPages;
+    }
+    window.dispatchEvent(new CustomEvent('mirror-info:document-loaded', { detail }));
   }
 
   function clearDocumentStats() {
@@ -566,6 +569,8 @@
       URL.revokeObjectURL(sourceUrl);
       throw error;
     }
+
+    if (selectedFile === file) selectedFilePhysicalPages = pdf.numPages;
 
     let extractedText = '';
     const MAX_PAGES = 1000;
@@ -3218,6 +3223,7 @@
     if (!translationInProgress) $('translateBtn')?.removeAttribute('disabled');
     selectedFile = null;
     selectedFileText = '';
+    selectedFilePhysicalPages = null;
     translatedAssetBlob = null;
     translatedAssetName = '';
     lastOcrLines = [];
@@ -3353,6 +3359,7 @@
 
         selectedFile = file;
         selectedFileText = '';
+        selectedFilePhysicalPages = null;
         clearDocumentStats();
         translatedAssetBlob = null;
         translatedAssetName = '';
