@@ -15,7 +15,7 @@ function getCookie(request, name) {
   return item ? item.slice(name.length + 1) : null;
 }
 
-async function verifyAccess(request, env) {
+export async function verifyAccess(request, env) {
   const team = env.CF_ACCESS_TEAM;
   const audience = env.CF_ACCESS_AUD;
 
