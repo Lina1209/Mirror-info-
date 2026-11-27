@@ -1622,7 +1622,7 @@
       }
       if (content.length > available) docxPreviewWasTruncated = true;
       const piece = content.slice(0, available);
-      appendDocxPreview(separator + piece);
+      previewParts.push(separator + piece);
       docxPreviewLength += separator.length + piece.length;
     }
     const originalDocxTextStructures = new Map();
