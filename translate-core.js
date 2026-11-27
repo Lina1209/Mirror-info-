@@ -1779,7 +1779,7 @@
           (element.localName || '').toLowerCase() === 'nav' &&
           Array.from(element.attributes).some(attribute =>
             (attribute.localName || attribute.name.split(':').pop()) === 'type' &&
-            String(attribute.value).split(/\\s+/).includes('toc')
+            String(attribute.value).split(/\s+/).includes('toc')
           )
         )) {
           const tocLinks = Array.from(nav.getElementsByTagName('*')).filter(element =>
@@ -1794,8 +1794,8 @@
             }
             if (!textNodes.length) continue;
             const source = textNodes.map(node => node.textContent).join('');
-            const leading = source.match(/^\\s*/)?.[0] || '';
-            const trailing = source.match(/\\s*$/)?.[0] || '';
+            const leading = source.match(/^\s*/)?.[0] || '';
+            const trailing = source.match(/\s*$/)?.[0] || '';
             const translated = await translateInParts(source.trim());
             previewParts.push(translated);
             distributeTranslatedText(leading + translated + trailing, textNodes);
@@ -1809,7 +1809,7 @@
     // Translate reader-facing EPUB package metadata without changing creator
     // names, identifiers, manifest paths, spine order, or resource references.
     const dcNamespace = 'http://purl.org/dc/elements/1.1/';
-    const metadataEntries = zip.file(/\\.opf$/i).filter(entry => !entry.dir);
+    const metadataEntries = zip.file(/\.opf$/i).filter(entry => !entry.dir);
     for (const entry of metadataEntries) {
       const metadataDoc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
       if (metadataDoc.querySelector('parsererror')) {
@@ -1826,8 +1826,8 @@
           }
           if (!textNodes.length) continue;
           const source = textNodes.map(node => node.textContent).join('');
-          const leading = source.match(/^\\s*/)?.[0] || '';
-          const trailing = source.match(/\\s*$/)?.[0] || '';
+          const leading = source.match(/^\s*/)?.[0] || '';
+          const trailing = source.match(/\s*$/)?.[0] || '';
           const translated = await translateInParts(source.trim());
           previewParts.push(translated);
           distributeTranslatedText(leading + translated + trailing, textNodes);
