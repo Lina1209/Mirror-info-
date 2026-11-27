@@ -1112,6 +1112,7 @@
     let copiedLinkAnnotationCount = 0;
     let sourceLinkAnnotationCount = 0;
     let copiedOutlineItemCount = 0;
+    let sourceOutlineItemCount = 0;
     let expectedTextLayerCharacters = 0;
     let expectedPdfMetadata = null;
     let nonLinkAnnotationCount = 0;
@@ -1430,6 +1431,15 @@
         const sourceOutline = typeof sourcePdf.getOutline === 'function'
           ? await sourcePdf.getOutline()
           : null;
+        const countSourceOutlineItems = (items, depth = 0) => {
+          if (!Array.isArray(items) || depth > 32) return 0;
+          return items.reduce((total, item) => {
+            if (!item) return total;
+            return total + (typeof item.title === 'string' && item.title.trim() ? 1 : 0) +
+              countSourceOutlineItems(item.items, depth + 1);
+          }, 0);
+        };
+        sourceOutlineItemCount = countSourceOutlineItems(sourceOutline);
         const outlineApi = outputPdf.outline;
         if (Array.isArray(sourceOutline) && sourceOutline.length &&
             outlineApi && typeof outlineApi.add === 'function') {
@@ -1507,6 +1517,13 @@
         }
       } catch (_) {
         pdfInspectionWarnings.push('Не удалось полностью прочитать или перенести оглавление PDF.');
+      }
+      if (sourceOutlineItemCount > copiedOutlineItemCount) {
+        pdfPreservationWarnings.push(
+          'Не все пункты оглавления PDF удалось перенести (' +
+          (sourceOutlineItemCount - copiedOutlineItemCount) + ' из ' +
+          sourceOutlineItemCount + '). Проверьте закладки в готовом файле.'
+        );
       }
 
       // Переносим доступные описательные метаданные исходного PDF.
