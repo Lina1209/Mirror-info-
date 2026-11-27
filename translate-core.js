@@ -998,6 +998,65 @@
       isEvalSupported: false
     }).promise;
 
+    // Собираем признаки PDF-возможностей, которые не входят в пересобранный файл.
+    // Предупреждения показываем пользователю, чтобы интерактивные данные не терялись молча.
+    const pdfPreservationWarnings = [];
+    try {
+      if (typeof sourcePdf.getFieldObjects === 'function') {
+        const fieldObjects = await sourcePdf.getFieldObjects();
+        const fields = fieldObjects && typeof fieldObjects === 'object'
+          ? Object.values(fieldObjects).flat()
+          : [];
+        const signatureFields = fields.filter(field =>
+          /signature/i.test(String(field?.type || field?.fieldType || ''))
+        ).length;
+        const interactiveFields = fields.length - signatureFields;
+        if (interactiveFields > 0) {
+          pdfPreservationWarnings.push(
+            'Интерактивные поля PDF (' + interactiveFields +
+            ') будут преобразованы в изображение и не останутся редактируемыми.'
+          );
+        }
+        if (signatureFields > 0) {
+          pdfPreservationWarnings.push(
+            'В исходном PDF обнаружены поля цифровой подписи (' + signatureFields +
+            '). Подписи и их проверка не переносятся в новый файл.'
+          );
+        }
+      }
+    } catch (_) {
+      // Недоступность сведений о формах не должна останавливать перевод.
+    }
+    try {
+      if (typeof sourcePdf.getAttachments === 'function') {
+        const attachments = await sourcePdf.getAttachments();
+        const attachmentCount = attachments && typeof attachments === 'object'
+          ? Object.keys(attachments).length
+          : 0;
+        if (attachmentCount > 0) {
+          pdfPreservationWarnings.push(
+            'В исходном PDF есть вложения (' + attachmentCount +
+            '). Они не включаются в переведённый файл.'
+          );
+        }
+      }
+    } catch (_) {
+      // Недоступность списка вложений не должна останавливать перевод.
+    }
+    try {
+      if (typeof sourcePdf.getJavaScript === 'function') {
+        const scripts = await sourcePdf.getJavaScript();
+        if (Array.isArray(scripts) && scripts.length) {
+          pdfPreservationWarnings.push(
+            'В исходном PDF обнаружены сценарии JavaScript (' + scripts.length +
+            '). Они не переносятся в новый файл.'
+          );
+        }
+      }
+    } catch (_) {
+      // Недоступность списка сценариев не должна останавливать перевод.
+    }
+
     let outputPdf = null;
     const previewParts = [];
     const MAX_PREVIEW_TEXT_CHARS = 500000;
@@ -1022,6 +1081,7 @@
     let copiedOutlineItemCount = 0;
     let expectedTextLayerCharacters = 0;
     let expectedPdfMetadata = null;
+    let nonLinkAnnotationCount = 0;
     let totalRasterPixels = 0;
     const MAX_TOTAL_RASTER_PIXELS = 140000000;
 
@@ -1189,6 +1249,11 @@
           // Preserve external URI links and resolvable internal page links.
           try {
             const annotations = await page.getAnnotations({ intent: 'display' });
+            if (Array.isArray(annotations)) {
+              nonLinkAnnotationCount += annotations.filter(annotation =>
+                annotation?.subtype && annotation.subtype !== 'Link'
+              ).length;
+            }
             if (typeof outputPdf.link === 'function') {
               for (const annotation of annotations) {
                 if (annotation?.subtype !== 'Link' || !Array.isArray(annotation.rect)) continue;
@@ -1470,10 +1535,20 @@
         }
       }
 
+      if (nonLinkAnnotationCount > 0) {
+        pdfPreservationWarnings.push(
+          'Обнаружены аннотации и элементы PDF, отличные от ссылок (' +
+          nonLinkAnnotationCount + '). Их интерактивные свойства не переносятся; видимая часть может сохраниться только как изображение страницы.'
+        );
+      }
+      const warningText = pdfPreservationWarnings.length
+        ? '\n\nВажно о сохранении PDF:\n• ' + pdfPreservationWarnings.join('\n• ')
+        : '';
       return {
         blob,
         text: (previewParts.join('\n\n') || 'Текст на страницах PDF не распознан.') +
-          (previewWasTruncated ? '\n\n[Предпросмотр сокращён для экономии памяти. Полный перевод сохранён в PDF.]' : '')
+          (previewWasTruncated ? '\n\n[Предпросмотр сокращён для экономии памяти. Полный перевод сохранён в PDF.]' : '') +
+          warningText
       };
     } finally {
       outputPdf = null;
