@@ -166,8 +166,11 @@
   }
 
   function registerPdfUnicodeFont(pdf, fontData) {
-    pdf.addFileToVFS('NotoSans-Regular.ttf', fontData);
-    pdf.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+    if (!pdf.__mirrorUnicodeFontRegistered) {
+      pdf.addFileToVFS('NotoSans-Regular.ttf', fontData);
+      pdf.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+      pdf.__mirrorUnicodeFontRegistered = true;
+    }
     pdf.setFont('NotoSans', 'normal');
   }
 
