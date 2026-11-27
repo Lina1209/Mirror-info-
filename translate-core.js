@@ -699,6 +699,35 @@
   }
 
   // Деление большого текста на небольшие фрагменты
+  function safeTextCutIndex(text, limit) {
+    const segmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+      ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+      : null;
+
+    if (segmenter) {
+      let boundary = 0;
+      for (const part of segmenter.segment(text)) {
+        const nextBoundary = part.index + part.segment.length;
+        if (nextBoundary > limit) break;
+        boundary = nextBoundary;
+      }
+      if (boundary > 0) return boundary;
+      const first = segmenter.segment(text)[Symbol.iterator]().next().value;
+      return first ? first.segment.length : Math.min(limit, text.length);
+    }
+
+    let boundary = Math.min(limit, text.length);
+    // Не разрезаем суррогатную пару (например, emoji) пополам.
+    if (
+      boundary > 0 &&
+      boundary < text.length &&
+      /[\\uD800-\\uDBFF]/.test(text[boundary - 1]) &&
+      /[\\uDC00-\\uDFFF]/.test(text[boundary])
+    ) boundary -= 1;
+
+    return Math.max(1, boundary);
+  }
+
   function splitText(text, maxLength = MAX_CHUNK_LENGTH) {
     const paragraphs = text.split(/\n{2,}/);
 
@@ -720,7 +749,9 @@
         let cut = part.lastIndexOf(' ', maxLength);
 
         if (cut < maxLength * 0.55) {
-          cut = maxLength;
+          cut = safeTextCutIndex(part, maxLength);
+        } else {
+          cut = safeTextCutIndex(part, cut);
         }
 
         chunks.push(part.slice(0, cut).trim());
