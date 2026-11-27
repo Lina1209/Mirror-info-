@@ -1183,6 +1183,7 @@
     const previewParts = [];
     const wordNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
     const drawingNs = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+    const chartNs = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
     const sheetNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 
     async function translateTextGroups(groups, namespace, tagName) {
@@ -1221,6 +1222,16 @@
       }
       const paragraphs = Array.from(doc.getElementsByTagNameNS(drawingNs, 'p'));
       await translateTextGroups(paragraphs, drawingNs, 't');
+
+      // Подписи категорий могут храниться в текстовом кэше диаграммы.
+      // Числовые кэши не затрагиваем.
+      if (entry.name.startsWith('word/charts/')) {
+        const stringCaches = [
+          ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strCache')),
+          ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strLit'))
+        ];
+        await translateTextGroups(stringCaches, chartNs, 'v');
+      }
       zip.file(entry.name, new XMLSerializer().serializeToString(doc));
     }
 
