@@ -19,6 +19,7 @@
   let selectedFileText = '';
   let selectedFile = null;
   let fileSelectionToken = 0;
+  let activeTranslationToken = 0;
   let ocrWorkerPromise = null;
   let ocrWorkerLanguage = '';
   let ocrQueue = Promise.resolve();
@@ -2870,6 +2871,8 @@
   // Очистка выбранного файла
   function clearSelection() {
     fileSelectionToken += 1;
+    activeTranslationToken += 1;
+    $('translateBtn')?.removeAttribute('disabled');
     selectedFile = null;
     selectedFileText = '';
     translatedAssetBlob = null;
@@ -2978,6 +2981,8 @@
       async function chooseFile(file, isPhoto = false) {
         if (!file) return;
         const selectionToken = ++fileSelectionToken;
+        activeTranslationToken += 1;
+        $('translateBtn')?.removeAttribute('disabled');
 
         clearError();
 
@@ -3162,6 +3167,9 @@
         'click',
         async () => {
           clearError();
+          const runToken = ++activeTranslationToken;
+          const selectionToken = fileSelectionToken;
+          const sourceFile = selectedFile;
 
           let source = (
             textInput?.value || ''
@@ -3171,10 +3179,10 @@
             source = selectedFileText.trim();
           }
 
-          const selectedExtension = selectedFile ? extension(selectedFile) : '';
+          const selectedExtension = sourceFile ? extension(sourceFile) : '';
           const packageFormats = ['docx', 'epub', 'fb2', 'pdf'];
           const canTranslateSelectedPackage =
-            Boolean(selectedFile) && packageFormats.includes(selectedExtension);
+            Boolean(sourceFile) && packageFormats.includes(selectedExtension);
 
           if (!source && !canTranslateSelectedPackage) {
             showError(
@@ -3193,39 +3201,42 @@
               'Подготавливаем перевод…'
             );
 
-            const ext = selectedFile ? extension(selectedFile) : '';
+            const ext = sourceFile ? extension(sourceFile) : '';
             let result;
             let asset = null;
 
-            if (selectedFile && ext === 'docx') {
-              const packaged = await translateDocxPackage(selectedFile);
+            if (sourceFile && ext === 'docx') {
+              const packaged = await translateDocxPackage(sourceFile);
               result = packaged.text;
               asset = packaged.blob;
-              setTranslatedAsset(asset, selectedFile, 'docx');
-            } else if (selectedFile && ext === 'epub') {
-              const packaged = await translateEpubPackage(selectedFile);
+            } else if (sourceFile && ext === 'epub') {
+              const packaged = await translateEpubPackage(sourceFile);
               result = packaged.text;
               asset = packaged.blob;
-              setTranslatedAsset(asset, selectedFile, 'epub');
-            } else if (selectedFile && ext === 'fb2') {
-              const packaged = await translateFb2Package(selectedFile);
+            } else if (sourceFile && ext === 'fb2') {
+              const packaged = await translateFb2Package(sourceFile);
               result = packaged.text;
               asset = packaged.blob;
-              setTranslatedAsset(asset, selectedFile, 'fb2');
-            } else if (selectedFile && ext === 'pdf') {
-              const packaged = await translatePdfPackage(selectedFile);
+            } else if (sourceFile && ext === 'pdf') {
+              const packaged = await translatePdfPackage(sourceFile);
               result = packaged.text;
               asset = packaged.blob;
-              setTranslatedAsset(asset, selectedFile, 'pdf');
-            } else if (selectedFile && (selectedFile.type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'tif', 'tiff'].includes(ext))) {
-              const translatedImage = await translateImageFile(selectedFile);
+            } else if (sourceFile && (sourceFile.type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'tif', 'tiff'].includes(ext))) {
+              const translatedImage = await translateImageFile(sourceFile);
               result = translatedImage.text;
               asset = translatedImage.blob;
             } else {
               result = await translateInParts(source);
             }
 
-            showResult(selectedFile, result);
+            if (
+              runToken !== activeTranslationToken ||
+              selectionToken !== fileSelectionToken ||
+              sourceFile !== selectedFile
+            ) return;
+
+            if (asset && sourceFile) setTranslatedAsset(asset, sourceFile, ext);
+            showResult(sourceFile, result);
             if (asset) showTranslatedAssetPreview(asset);
 
             progress(
@@ -3233,9 +3244,16 @@
               'Перевод готов.'
             );
 
-            setTimeout(hideProgress, 800);
+            setTimeout(() => {
+              if (runToken === activeTranslationToken) hideProgress();
+            }, 800);
 
           } catch (error) {
+            if (
+              runToken !== activeTranslationToken ||
+              selectionToken !== fileSelectionToken ||
+              sourceFile !== selectedFile
+            ) return;
             hideProgress();
 
             showError(
@@ -3244,7 +3262,9 @@
             );
 
           } finally {
-            translateBtn.disabled = false;
+            if (runToken === activeTranslationToken) {
+              translateBtn.disabled = false;
+            }
           }
         }
       );
