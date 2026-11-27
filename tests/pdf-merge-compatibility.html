@@ -436,6 +436,34 @@
         document.catalog.set(name('Outlines'), rootRef);
         return rootRef;
       }
+      async function inspectStampAppearancePixels(bytes) {
+        const task = window.pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
+        const pdf = await task.promise;
+        const page = await pdf.getPage(1);
+        const scale = 1.5;
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        await page.render({
+          canvasContext: context,
+          viewport,
+          annotationMode: window.pdfjsLib.AnnotationMode.ENABLE
+        }).promise;
+        const sample = (x, y) => {
+          const point = viewport.convertToViewportPoint(x, y);
+          const pixel = context.getImageData(Math.floor(point[0]), Math.floor(point[1]), 1, 1).data;
+          return { r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] };
+        };
+        const result = {
+          on: sample(320, 235),
+          off: sample(370, 235)
+        };
+        page.cleanup();
+        await pdf.destroy();
+        return result;
+      }
       async function inspect(bytes) {
         const task = window.pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
         const pdf = await task.promise;
@@ -815,6 +843,10 @@
           assert(hasNormalAppearance(merged, merged.getPages()[0], 'Text'), 'Text note normal appearance stream survives the merge');
           assert(hasStatefulAppearance(merged, merged.getPages()[0], 'On'), 'Active /On appearance state and both /N streams survive the merge');
           assert(hasStatefulAppearance(merged, merged.getPages()[0], 'Off'), 'Active /Off appearance state and both /N streams survive the merge');
+          const renderedStampPixels = await inspectStampAppearancePixels(output);
+          report('Rendered stateful Stamp center pixels: ' + JSON.stringify(renderedStampPixels));
+          assert(renderedStampPixels.on.g > renderedStampPixels.on.r * 1.5 && renderedStampPixels.on.g > renderedStampPixels.on.b * 1.5, 'PDF.js canvas renders the selected /On stamp appearance as green');
+          assert(Math.abs(renderedStampPixels.off.r - renderedStampPixels.off.g) < 18 && Math.abs(renderedStampPixels.off.g - renderedStampPixels.off.b) < 18 && renderedStampPixels.off.r > 70, 'PDF.js canvas renders the selected /Off stamp appearance as neutral gray');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
           assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
           assert(namedTargets.get('batch-b-chapter-start') === 2, 'Batch B named destination resolves to merged page 3');
