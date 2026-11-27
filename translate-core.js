@@ -874,8 +874,18 @@
   let lastOcrLines = [];
 
   function setTranslatedAsset(blob, file, outputExtension) {
+    if (!blob || !blob.size) {
+      throw new Error('Переведённый файл пустой — повторите экспорт.');
+    }
     translatedAssetBlob = blob;
-    const base = (file?.name || 'mirror-info-translation').replace(/\.[^.]+$/, '');
+    const originalName = String(file?.name || 'mirror-info-translation');
+    const safeName = originalName
+      .replace(/^.*[\\/]/, '')
+      .replace(/[\\u0000-\\u001f\\u007f]/g, '')
+      .replace(/\.[^.]+$/, '')
+      .trim()
+      .slice(0, 160);
+    const base = safeName || 'mirror-info-translation';
     translatedAssetName = base + '.translated.' + outputExtension;
   }
 
@@ -2236,15 +2246,18 @@
       });
 
       const ext = extension(file);
-      const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
-      const outputExtension = mime === 'image/jpeg' ? 'jpg' : 'png';
+      const requestedMime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
       const blob = await new Promise((resolve, reject) => {
         canvas.toBlob(
-          value => value ? resolve(value) : reject(new Error('Не удалось создать переведённое изображение.')),
-          mime,
+          value => value && value.size
+            ? resolve(value)
+            : reject(new Error('Не удалось создать переведённое изображение.')),
+          requestedMime,
           0.94
         );
       });
+      // Имя файла соответствует фактическому MIME, возвращённому браузером.
+      const outputExtension = blob.type === 'image/jpeg' ? 'jpg' : 'png';
 
       setTranslatedAsset(blob, file, outputExtension);
       return { blob, text: translatedLines.join('\n') };
