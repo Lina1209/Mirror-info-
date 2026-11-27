@@ -1137,20 +1137,12 @@
           }
           const pointScaleX = pageWidth / canvas.width;
           const pointScaleY = pageHeight / canvas.height;
-          // Preserve external URI links as clickable regions over the rasterized page.
-          // Internal destinations and non-link annotations are intentionally left untouched.
+          // Preserve external URI links and resolvable internal page links.
           try {
             const annotations = await page.getAnnotations({ intent: 'display' });
             if (typeof outputPdf.link === 'function') {
               for (const annotation of annotations) {
-                if (annotation?.subtype !== 'Link' || !annotation?.url || !Array.isArray(annotation.rect)) continue;
-                let safeUrl;
-                try {
-                  safeUrl = new URL(annotation.url);
-                } catch (_) {
-                  continue;
-                }
-                if (!['http:', 'https:', 'mailto:'].includes(safeUrl.protocol)) continue;
+                if (annotation?.subtype !== 'Link' || !Array.isArray(annotation.rect)) continue;
                 const viewportRect = viewport.convertToViewportRectangle(annotation.rect);
                 if (!Array.isArray(viewportRect) || viewportRect.length !== 4) continue;
                 const left = Math.max(0, Math.min(pageWidth, Math.min(viewportRect[0], viewportRect[2]) * pointScaleX));
@@ -1158,7 +1150,26 @@
                 const right = Math.max(0, Math.min(pageWidth, Math.max(viewportRect[0], viewportRect[2]) * pointScaleX));
                 const bottom = Math.max(0, Math.min(pageHeight, Math.max(viewportRect[1], viewportRect[3]) * pointScaleY));
                 if (right - left < 1 || bottom - top < 1) continue;
-                outputPdf.link(left, top, right - left, bottom - top, { url: safeUrl.href });
+                if (annotation.url) {
+                  let safeUrl;
+                  try { safeUrl = new URL(annotation.url); } catch (_) { continue; }
+                  if (!['http:', 'https:', 'mailto:'].includes(safeUrl.protocol)) continue;
+                  outputPdf.link(left, top, right - left, bottom - top, { url: safeUrl.href });
+                  continue;
+                }
+                try {
+                  let destination = annotation.dest;
+                  if (typeof destination === 'string') destination = await sourcePdf.getDestination(destination);
+                  if (!Array.isArray(destination) || !destination.length) continue;
+                  const pageReference = destination[0];
+                  const targetPageIndex = Number.isInteger(pageReference)
+                    ? pageReference
+                    : await sourcePdf.getPageIndex(pageReference);
+                  if (!Number.isInteger(targetPageIndex) || targetPageIndex < 0 || targetPageIndex >= sourcePdf.numPages) continue;
+                  outputPdf.link(left, top, right - left, bottom - top, { pageNumber: targetPageIndex + 1 });
+                } catch (_) {
+                  // Unresolvable internal destinations are skipped safely.
+                }
               }
             }
           } catch (_) {
