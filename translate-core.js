@@ -1104,6 +1104,39 @@
         throw new Error('В этом режиме PDF поддерживает до 150 страниц. Для более крупных книг потребуется пакетная обработка.');
       }
 
+      // Сначала проверяем суммарный объём растеризации всех страниц.
+      // Это не повышает лимит, но не позволяет потратить время на OCR и перевод,
+      // если документ всё равно превысит безопасный бюджет памяти.
+      let preflightRasterPixels = 0;
+      for (let pageNumber = 1; pageNumber <= sourcePdf.numPages; pageNumber += 1) {
+        progress(
+          2 + pageNumber / sourcePdf.numPages * 3,
+          'Проверяем объём страниц PDF: ' + pageNumber + ' из ' + sourcePdf.numPages + '…'
+        );
+        let page = null;
+        try {
+          page = await sourcePdf.getPage(pageNumber);
+          const baseViewport = page.getViewport({ scale: 1 });
+          const scale = Math.min(
+            1.5,
+            Math.sqrt(16000000 / Math.max(1, baseViewport.width * baseViewport.height))
+          );
+          const viewport = page.getViewport({ scale });
+          const pagePixels = Math.ceil(viewport.width) * Math.ceil(viewport.height);
+          preflightRasterPixels += pagePixels;
+          if (preflightRasterPixels > MAX_TOTAL_RASTER_PIXELS) {
+            throw new Error(
+              'Предварительная проверка: суммарный объём изображений PDF превышает безопасный предел обработки в браузере. ' +
+              'Перевод не запускался. Разделите книгу на части или уменьшите разрешение страниц.'
+            );
+          }
+        } finally {
+          if (page) {
+            try { await page.cleanup(); } catch (_) {}
+          }
+        }
+      }
+
       for (let pageNumber = 1; pageNumber <= sourcePdf.numPages; pageNumber += 1) {
         progress(
           5 + (pageNumber - 1) / sourcePdf.numPages * 85,
