@@ -1002,11 +1002,11 @@
     let copiedOutlineItemCount = 0;
     let expectedPdfMetadata = null;
     let totalRasterPixels = 0;
-    const MAX_TOTAL_RASTER_PIXELS = 100000000;
+    const MAX_TOTAL_RASTER_PIXELS = 140000000;
 
     try {
-      if (sourcePdf.numPages > 100) {
-        throw new Error('В этом режиме PDF поддерживает до 100 страниц за один проход. Разделите большой документ на части.');
+      if (sourcePdf.numPages > 150) {
+        throw new Error('В этом режиме PDF поддерживает до 150 страниц. Для более крупных книг потребуется пакетная обработка.');
       }
 
       for (let pageNumber = 1; pageNumber <= sourcePdf.numPages; pageNumber += 1) {
