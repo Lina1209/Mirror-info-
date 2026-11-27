@@ -77,7 +77,7 @@ The harness checks:
 - internal link destination resolution and exact expected target page after concatenation (batch A page 2 and batch B page 4);
 - merged title metadata and successful PDF.js reopening.
 
-This is a compatibility experiment, not a completed test result: the harness has been committed but has **not** been executed in a real browser in this work session. Annotation presence does not prove that every internal destination resolves to the intended page. Cross-batch links, bookmarks/outlines, forms, signatures, attachments, tagged structure, large-file memory, and Cloudflare Workers compatibility remain unverified. The test page is not loaded by the production app and does not change the PDF translation path.
+This is an isolated compatibility experiment, not a production merger. GitHub Actions run `45975966177` completed successfully in Chromium on 2026-11-27. It verified four merged pages, portrait/landscape dimensions, extractable text, two external URI links, exact internal targets (source page 1 → merged page 2 and source page 3 → merged page 4), metadata, and PDF.js reopening. A follow-up test now adds `/Rotate` values of 90° and 270° to copied pages and asserts they survive; its CI result is pending. Cross-batch links, bookmarks/outlines, forms, signatures, attachments, tagged structure, large-file memory, and Cloudflare Workers compatibility remain unverified. The test page is not loaded by the production app and does not change the PDF translation path.
 
 ## Immediate decision
 
@@ -122,3 +122,10 @@ The isolated merge spike now has a Playwright runner at `tests/run-pdf-merge-com
 The workflow launches Chromium, serves the repository over localhost, loads the pinned jsPDF/pdf-lib/PDF.js browser harness, runs the assertions, and fails the job if the harness reports `RESULT: FAIL` or a browser page error occurs. It runs for relevant pull-request and feature-branch changes and can also be started manually from the GitHub Actions interface.
 
 This automation validates only the small synthetic merge fixture. It does not test production translation, large-file memory use, Cloudflare Workers, OCR fidelity, forms, signatures, bookmarks, or real customer documents. A green result must not be interpreted as approval to raise the 150-page production cap.
+
+
+## Verified compatibility evidence
+
+- Run `45975966177` — **success** (Chromium; commit `0742ff3`). Internal link destinations were verified at zero-based page indexes 1 and 3, with no broken internal links.
+- Run for commit `15884c9` — adds explicit 90°/270° page-rotation assertions. Do not treat this as verified until its GitHub Actions run is green.
+- Bookmark/outline preservation is still an open requirement. The current `copyPages` spike does not copy catalog-level outline trees; do not imply that it does. Add a dedicated fixture and test before claiming bookmark support.
