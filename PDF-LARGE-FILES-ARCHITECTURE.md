@@ -114,3 +114,11 @@ Required safeguards:
 Before selecting a merger, build an isolated test with the exact PDF.js/jsPDF versions already used here. Demonstrate that a two-batch document can be merged without losing page dimensions, rotation, external links, internal destinations, and promised metadata. Measure peak memory in the intended Cloudflare runtime. If the merger requires loading all source and output bytes into one large buffer, reject it for the 300–500+ page target and use a dedicated processing runtime instead.
 
 No R2 binding, endpoint, or merge dependency is enabled by this planning note.
+
+## Automated browser check
+
+The isolated merge spike now has a Playwright runner at `tests/run-pdf-merge-compatibility.mjs` and a GitHub Actions workflow at `.github/workflows/pdf-merge-compatibility.yml`.
+
+The workflow launches Chromium, serves the repository over localhost, loads the pinned jsPDF/pdf-lib/PDF.js browser harness, runs the assertions, and fails the job if the harness reports `RESULT: FAIL` or a browser page error occurs. It runs for relevant pull-request and feature-branch changes and can also be started manually from the GitHub Actions interface.
+
+This automation validates only the small synthetic merge fixture. It does not test production translation, large-file memory use, Cloudflare Workers, OCR fidelity, forms, signatures, bookmarks, or real customer documents. A green result must not be interpreted as approval to raise the 150-page production cap.
