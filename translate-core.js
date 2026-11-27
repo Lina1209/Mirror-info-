@@ -31,6 +31,22 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // Единая точка связи загрузчика с панелью статистики документа.
+  function publishDocumentStats(text, file) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') return;
+    window.dispatchEvent(new CustomEvent('mirror-info:document-loaded', {
+      detail: {
+        text: String(text || ''),
+        fileName: file?.name || 'Введённый текст'
+      }
+    }));
+  }
+
+  function clearDocumentStats() {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function' || typeof Event !== 'function') return;
+    window.dispatchEvent(new Event('mirror-info:document-cleared'));
+  }
+
   function showError(message) {
     const wrap = $('errorWrap');
     const text = $('errorText');
@@ -3196,6 +3212,7 @@
 
   // Очистка выбранного файла
   function clearSelection() {
+    clearDocumentStats();
     fileSelectionToken += 1;
     activeTranslationToken += 1;
     if (!translationInProgress) $('translateBtn')?.removeAttribute('disabled');
@@ -3336,6 +3353,7 @@
 
         selectedFile = file;
         selectedFileText = '';
+        clearDocumentStats();
         translatedAssetBlob = null;
         translatedAssetName = '';
         lastOcrLines = [];
@@ -3395,6 +3413,7 @@
           if (textInput) {
             textInput.value = selectedFileText;
           }
+          publishDocumentStats(selectedFileText, file);
 
           progress(
             100,
