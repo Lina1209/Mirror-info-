@@ -854,6 +854,8 @@
 
     let outputPdf = null;
     const previewParts = [];
+    let totalRasterPixels = 0;
+    const MAX_TOTAL_RASTER_PIXELS = 100000000;
 
     try {
       if (sourcePdf.numPages > 100) {
@@ -877,6 +879,15 @@
             Math.sqrt(16000000 / Math.max(1, baseViewport.width * baseViewport.height))
           );
           const viewport = page.getViewport({ scale });
+          const pagePixels = Math.ceil(viewport.width) * Math.ceil(viewport.height);
+          totalRasterPixels += pagePixels;
+          if (totalRasterPixels > MAX_TOTAL_RASTER_PIXELS) {
+            throw new Error(
+              'Общий объём изображений PDF превышает безопасный предел обработки в браузере. ' +
+              'Разделите книгу на более короткие части или уменьшите разрешение страниц.'
+            );
+          }
+
           canvas = document.createElement('canvas');
           canvas.width = Math.ceil(viewport.width);
           canvas.height = Math.ceil(viewport.height);
@@ -945,7 +956,16 @@
           const pageWidth = viewport.width / scale;
           const pageHeight = viewport.height / scale;
           const orientation = pageWidth > pageHeight ? 'landscape' : 'portrait';
-          const pageImage = canvas.toDataURL('image/jpeg', 0.92);
+          const pageBlob = await new Promise((resolve, reject) => {
+            canvas.toBlob(
+              blob => blob
+                ? resolve(blob)
+                : reject(new Error('Не удалось подготовить изображение страницы PDF.')),
+              'image/jpeg',
+              0.90
+            );
+          });
+          const pageImageBytes = new Uint8Array(await pageBlob.arrayBuffer());
 
           if (!outputPdf) {
             outputPdf = new JsPDF({
@@ -958,7 +978,16 @@
             outputPdf.addPage([pageWidth, pageHeight], orientation);
           }
 
-          outputPdf.addImage(pageImage, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+          outputPdf.addImage(
+            pageImageBytes,
+            'JPEG',
+            0,
+            0,
+            pageWidth,
+            pageHeight,
+            undefined,
+            'FAST'
+          );
         } finally {
           if (canvas) {
             canvas.width = 0;
@@ -989,6 +1018,8 @@
         text: previewParts.join('\n\n') || 'Текст на страницах PDF не распознан.'
       };
     } finally {
+      outputPdf = null;
+      previewParts.length = 0;
       try {
         await sourcePdf.destroy();
       } catch (_) {
