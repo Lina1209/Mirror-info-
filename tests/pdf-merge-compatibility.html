@@ -189,7 +189,7 @@
         popup.set(name('Subtype'), name('Popup'));
         popup.set(name('Rect'), rect);
         popup.set(name('Parent'), parentRef);
-        popup.set(name('Open'), PDFBool.of(false));
+        popup.set(name('Open'), PDFBool.False);
         const popupRef = context.register(popup);
         context.lookup(parentRef).set(name('Popup'), popupRef);
         page.node.addAnnot(popupRef);
