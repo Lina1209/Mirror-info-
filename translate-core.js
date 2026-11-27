@@ -1974,6 +1974,29 @@
 
     validateEpubPackageLimits(zip, 'Исходный EPUB');
     const epubFileNames = Object.keys(zip.files).filter(name => !zip.files[name].dir);
+
+    // Сохраняем компактные контрольные суммы ресурсов, которые переводчик
+    // не редактирует: обложек, изображений, CSS, шрифтов, аудио и прочих файлов.
+    // Это позволяет проверить их байтовую целостность без хранения второй копии архива.
+    function hashEpubResource(bytes) {
+      let first = 0x811c9dc5;
+      let second = 0x9e3779b9;
+      for (let index = 0; index < bytes.length; index += 1) {
+        const value = bytes[index];
+        first = Math.imul(first ^ value, 0x01000193) >>> 0;
+        second = (Math.imul(second ^ value, 0x85ebca6b) + index) >>> 0;
+      }
+      return bytes.length + ':' + first.toString(16) + ':' + second.toString(16);
+    }
+    const translatedEpubEntry = /\.(xhtml|html|htm|ncx|opf)$/i;
+    const protectedEpubResources = new Map();
+    for (const name of epubFileNames) {
+      if (name === 'mimetype' || translatedEpubEntry.test(name)) continue;
+      const entry = zip.file(name);
+      if (!entry) throw new Error('Не найден ресурс EPUB перед переводом: ' + name);
+      protectedEpubResources.set(name, hashEpubResource(await entry.async('uint8array')));
+    }
+
     if (epubFileNames[0] !== 'mimetype') {
       throw new Error('В EPUB файл mimetype должен быть первым элементом архива. Пересоберите EPUB стандартным экспортом книги.');
     }
@@ -2114,6 +2137,17 @@
       (await verifiedEpub.file('mimetype').async('text')).trim() !== 'application/epub+zip'
     ) {
       throw new Error('Проверка собранного EPUB выявила повреждение структуры архива.');
+    }
+
+    for (const [name, originalHash] of protectedEpubResources) {
+      const entry = verifiedEpub.file(name);
+      if (!entry) {
+        throw new Error('В готовом EPUB отсутствует исходный ресурс: ' + name);
+      }
+      const verifiedHash = hashEpubResource(await entry.async('uint8array'));
+      if (verifiedHash !== originalHash) {
+        throw new Error('Проверка EPUB выявила изменение изображения, обложки, стиля или другого ресурса: ' + name);
+      }
     }
 
     return {
