@@ -436,8 +436,8 @@
           const sourceWidgets = sourceTextField.acroField.getWidgets();
           assert(sourceWidgets.length === 1, 'Synthetic source text field has one widget');
           const sourceWidget = sourceWidgets[0];
-          const sourceWidgetPageRef = sourceWidget.getP();
-          const sourceWidgetPageIndex = first.getPages().findIndex(page => sourceWidgetPageRef && page.ref.toString() === sourceWidgetPageRef.toString());
+          const sourceWidgetPageRef = sourceWidget.dict.get(PDFName.of('P'));
+          const sourceWidgetPageIndex = first.getPages().findIndex(page => sourceWidgetPageRef && page.ref && page.ref.toString() === sourceWidgetPageRef.toString());
           assert(sourceWidgetPageIndex === 0, 'Source widget points to the expected first page');
           const sourceWidgetRect = sourceWidget.getRectangle();
           report('Source text field geometry: ' + JSON.stringify(sourceWidgetRect));
