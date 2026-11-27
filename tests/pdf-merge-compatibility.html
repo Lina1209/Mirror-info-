@@ -48,6 +48,7 @@
         const task = window.pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
         const pdf = await task.promise;
         const pages = [];
+        const pageTexts = [];
         let externalLinks = 0;
         let internalLinks = 0;
         let resolvedInternalLinks = 0;
@@ -58,6 +59,8 @@
           const page = await pdf.getPage(i);
           const viewport = page.getViewport({ scale: 1 });
           pages.push({ width: Math.round(viewport.width), height: Math.round(viewport.height) });
+          const textContent = await page.getTextContent();
+          pageTexts.push(textContent.items.map(item => item.str).join(' '));
           const annotations = await page.getAnnotations();
           for (const annotation of annotations) {
             if (typeof annotation.url === 'string' && annotation.url.startsWith('https://')) {
@@ -83,7 +86,7 @@
         }
         const metadata = await pdf.getMetadata();
         await pdf.destroy();
-        return { pages, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, title: metadata.info && metadata.info.Title };
+        return { pages, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, title: metadata.info && metadata.info.Title };
       }
       button.addEventListener('click', async function () {
         lines.length = 0;
@@ -103,7 +106,9 @@
           const result = await inspect(output);
           assert(result.pages.length === 4, 'Four pages survive a two-batch merge');
           assert(result.pages[0].width < result.pages[0].height, 'A4 portrait source page geometry is preserved');
-          assert(result.pages[1].width > result.pages[1].height, 'Landscape page geometry is preserved');
+          assert(result.pages[1].width > result.pages[1].height && result.pages[3].width > result.pages[3].height, 'Both landscape page geometries are preserved');
+          assert(result.pages[2].width < result.pages[2].height, 'Second batch portrait page geometry is preserved');
+          assert(result.pageTexts[0].includes('BATCH-A') && result.pageTexts[1].includes('BATCH-A') && result.pageTexts[2].includes('BATCH-B') && result.pageTexts[3].includes('BATCH-B'), 'Text content remains extractable on all four merged pages');
           assert(result.externalLinks >= 2, 'External URI link annotations survive from both batches');
           assert(result.internalLinks >= 2, 'Internal link annotations remain present in the merged output');
           assert(result.resolvedInternalLinks === 2 && result.brokenInternalLinks === 0, 'Both internal links resolve without broken destinations');
@@ -113,6 +118,7 @@
           assert(result.title === 'Mirror Info merged compatibility test', 'Merged PDF metadata can be written and read back');
           report('RESULT: PASS — merged PDF reopened successfully with PDF.js.');
           report('Page geometry: ' + JSON.stringify(result.pages));
+          report('Extracted text by page: ' + JSON.stringify(result.pageTexts));
           report('Link counts: external=' + result.externalLinks + ', internal=' + result.internalLinks + ', resolved=' + result.resolvedInternalLinks + ', broken=' + result.brokenInternalLinks);
           report('Internal targets (zero-based): ' + JSON.stringify(result.internalTargets));
           report('NOTE: This is a small browser compatibility check only. It does not establish bounded memory, bookmarks, forms, signatures, or Cloudflare runtime suitability.');
