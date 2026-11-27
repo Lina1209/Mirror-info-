@@ -22,6 +22,12 @@ Recommended names:
 | Capability signing secret | `PDF_JOB_SIGNING_SECRET` |
 | Allowed origin | exact production/staging site origin, configured server-side |
 
+## Runtime and plan gate
+
+Do not deploy a PDF parser/merger as a long-running Pages Function based only on the existence of D1 and R2 bindings. Cloudflare Workers have a documented 128 MB per-isolate memory limit; CPU allowance is 10 ms per request on Free and 30 seconds by default on Paid (configurable up to 5 minutes). A multi-hundred-page PDF merge that parses source objects and serializes one complete output may exceed these limits even when translation is split into batches.
+
+Before provisioning or enabling PDF job routes, confirm the account plan, expected page dimensions, raster output size, concurrency, and peak memory using representative files. Use Pages Functions for authenticated job control and storage orchestration only when measured work fits. If final PDF assembly needs more memory or CPU, use a separately bounded container/server job; do not assume R2 provides streaming PDF merge. Keep the current client translation limit unchanged until that path is proven.
+
 ## 1. Create the private R2 bucket
 
 1. Open Cloudflare Dashboard → R2 Object Storage.
