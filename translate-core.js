@@ -1337,6 +1337,12 @@
       // сносках, примечаниях и комментариях; разметка Word сохраняется.
       const paragraphs = Array.from(doc.getElementsByTagNameNS(wordNs, 'p'));
       await translateTextGroups(paragraphs, wordNs, 't');
+
+      // Встроенные текстовые блоки фигур и рисунков используют DrawingML,
+      // а не WordprocessingML. Они находятся прямо в document/header XML.
+      const drawingParagraphs = Array.from(doc.getElementsByTagNameNS(drawingNs, 'p'));
+      await translateTextGroups(drawingParagraphs, drawingNs, 't');
+
       // Переводим альтернативные описания объектов, не меняя их идентификаторы.
       await translateDescriptionAttributes(doc, [
         'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',
