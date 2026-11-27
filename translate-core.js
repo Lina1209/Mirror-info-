@@ -1132,6 +1132,34 @@
             'FAST'
           );
 
+          // Preserve external URI links as clickable regions over the rasterized page.
+          // Internal destinations and non-link annotations are intentionally left untouched.
+          try {
+            const annotations = await page.getAnnotations({ intent: 'display' });
+            if (typeof outputPdf.link === 'function') {
+              for (const annotation of annotations) {
+                if (annotation?.subtype !== 'Link' || !annotation?.url || !Array.isArray(annotation.rect)) continue;
+                let safeUrl;
+                try {
+                  safeUrl = new URL(annotation.url);
+                } catch (_) {
+                  continue;
+                }
+                if (!['http:', 'https:', 'mailto:'].includes(safeUrl.protocol)) continue;
+                const viewportRect = viewport.convertToViewportRectangle(annotation.rect);
+                if (!Array.isArray(viewportRect) || viewportRect.length !== 4) continue;
+                const left = Math.max(0, Math.min(pageWidth, Math.min(viewportRect[0], viewportRect[2]) * pointScaleX));
+                const top = Math.max(0, Math.min(pageHeight, Math.min(viewportRect[1], viewportRect[3]) * pointScaleY));
+                const right = Math.max(0, Math.min(pageWidth, Math.max(viewportRect[0], viewportRect[2]) * pointScaleX));
+                const bottom = Math.max(0, Math.min(pageHeight, Math.max(viewportRect[1], viewportRect[3]) * pointScaleY));
+                if (right - left < 1 || bottom - top < 1) continue;
+                outputPdf.link(left, top, right - left, bottom - top, { url: safeUrl.href });
+              }
+            }
+          } catch (_) {
+            // Missing or malformed annotations must not prevent page translation.
+          }
+
           if (unicodeFontData) {
             registerPdfUnicodeFont(outputPdf, unicodeFontData);
           }
