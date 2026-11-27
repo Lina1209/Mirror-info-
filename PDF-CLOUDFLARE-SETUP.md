@@ -133,3 +133,15 @@ A capability must be bound to one job, expire quickly, be compared in constant t
 ## Current status
 
 The repository currently has a D1 binding for orders only. No PDF R2 binding, Turnstile secret, PDF job API, scheduled cleanup, or PDF merger is enabled by this document. Do not raise the existing 150-page browser translation limit until the staging checklist passes with representative files.
+
+## Repository migration file
+
+The proposed schema is now kept as the versioned migration `migrations/0002_pdf_jobs.sql`. This file creates only `pdf_jobs`, `pdf_job_batches`, and their indexes; it does not alter or delete the existing order tables.
+
+Apply it to a **staging D1 database only after** the private R2 bucket and protected API are configured:
+
+```sh
+npx wrangler d1 execute mirror-info-orders-staging --remote --file=./migrations/0002_pdf_jobs.sql
+```
+
+Replace the example database name with the actual staging database. Do not apply this migration to production as part of the current preparation. The SQL was syntax-tested against SQLite, including page-range CHECK constraints and cascading deletion of batch metadata. This local test does not replace a remote D1 staging test.
