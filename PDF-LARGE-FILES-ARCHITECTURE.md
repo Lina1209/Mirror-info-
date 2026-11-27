@@ -173,3 +173,10 @@ GitHub Actions run `45977262548` (commit `2e51484`) completed successfully, but 
 A follow-up fixture (commit `f6575d8`) makes this loss an explicit expected assertion and adds highlight annotations to both source batches to test whether page-level text markup annotations survive. Its result is pending. Even if highlights pass, that does not imply support for AcroForms, widgets, signatures, attachments, or other catalog-level structures.
 
 Product implication: until a dedicated field-tree reconstruction strategy is implemented and tested, interactive forms must be marked unsupported/unverified in any PDF merge/translation workflow; do not silently promise that filled forms remain editable.
+
+
+## Highlight annotation diagnostic
+
+GitHub Actions run `45977595154` (commit `b63ac85`) completed in Chromium. PDF.js found two `Highlight` annotation objects after the merge, one on each source batch page. However, both returned empty `contents` strings, despite the source fixture assigning descriptive contents. The prior assertion incorrectly treated missing annotation contents as proof that the highlight objects themselves were absent. The harness now separates these outcomes: it checks for two surviving Highlight objects and separately records that their contents metadata is missing. This narrow fixture does not verify appearance streams, QuadPoints fidelity, color, opacity, author, dates, or arbitrary markup annotations.
+
+AcroForm remains independently unsupported by the tested `copyPages` path: the same run observed a widget annotation on batch A but zero document-level fields. A widget annotation without a corresponding field tree is not an editable form. Do not claim form preservation.
