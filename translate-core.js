@@ -18,6 +18,7 @@
 
   let selectedFileText = '';
   let selectedFile = null;
+  let fileSelectionToken = 0;
   let ocrWorkerPromise = null;
   let ocrWorkerLanguage = '';
   let lastOcrLanguage = '';
@@ -2314,6 +2315,9 @@
     if (preview.dataset.objectUrl) {
       URL.revokeObjectURL(preview.dataset.objectUrl);
     }
+    if (preview.tagName === 'IMG' || preview.tagName === 'IFRAME') {
+      preview.src = 'about:blank';
+    }
     preview.remove();
   }
 
@@ -2358,6 +2362,7 @@
 
   // Очистка выбранного файла
   function clearSelection() {
+    fileSelectionToken += 1;
     selectedFile = null;
     selectedFileText = '';
     translatedAssetBlob = null;
@@ -2465,6 +2470,7 @@
       // Выбор и чтение файла
       async function chooseFile(file, isPhoto = false) {
         if (!file) return;
+        const selectionToken = ++fileSelectionToken;
 
         clearError();
 
@@ -2487,7 +2493,9 @@
         progress(3, 'Проверяем файл…');
 
         try {
-          selectedFileText = await extractFile(file);
+          const extractedText = await extractFile(file);
+          if (selectionToken !== fileSelectionToken || selectedFile !== file) return;
+          selectedFileText = extractedText;
 
           if (!selectedFileText.trim()) {
             throw new Error(
@@ -2509,6 +2517,7 @@
           setTimeout(hideProgress, 900);
 
         } catch (error) {
+          if (selectionToken !== fileSelectionToken || selectedFile !== file) return;
           hideProgress();
 
           showError(
