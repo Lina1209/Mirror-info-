@@ -513,7 +513,7 @@
           const allFormsInspection = await inspect(allFormsOutput);
           report('Reconstructed all-form inventory: ' + JSON.stringify(allFormsInspection.formFieldInventory));
           assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.approved' && field.value !== null && field.value !== 'Off'), 'Reconstructed checkbox retains its checked state');
-          assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.delivery' && field.value === 'express'), 'Reconstructed radio group retains its selected option');
+          assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.delivery' && field.value === '0'), 'Reconstructed radio group retains the first selected widget option corresponding to source selection express');
           assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.language' && field.value === 'French'), 'Reconstructed dropdown retains its selected option');
           report('Merged annotation inventory: ' + JSON.stringify(result.annotationSummary));
           report('Detected highlight contents: ' + JSON.stringify(result.highlightContents));
