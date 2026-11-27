@@ -1540,6 +1540,13 @@
     const protectedWordParts = zip.file(
       /^word\/(styles\.xml|numbering\.xml|fontTable\.xml|settings\.xml|webSettings\.xml|theme\/.*|fonts\/.*)$/i
     ).filter(entry => !entry.dir);
+    // Медиа Word (изображения, обложки и другие вложенные файлы) должны
+    // остаться побайтно неизменными: переводим подписи, а не сами картинки.
+    const protectedMediaParts = zip.file(/^word\/media\/.*$/i).filter(entry => !entry.dir);
+    const originalMediaParts = new Map();
+    for (const entry of protectedMediaParts) {
+      originalMediaParts.set(entry.name, await entry.async('uint8array'));
+    }
     const originalProtectedParts = new Map();
     for (const entry of protectedWordParts) {
       originalProtectedParts.set(entry.name, await entry.async('uint8array'));
@@ -1879,6 +1886,16 @@
       }
     }
 
+    for (const [partName, originalBytes] of originalMediaParts) {
+      const currentEntry = zip.file(partName);
+      if (!currentEntry) throw new Error('Потеряно изображение или медиа Word: ' + partName);
+      const currentBytes = await currentEntry.async('uint8array');
+      if (currentBytes.length !== originalBytes.length ||
+          currentBytes.some((byte, index) => byte !== originalBytes[index])) {
+        throw new Error('При переводе изменилось изображение или медиа Word: ' + partName);
+      }
+    }
+
     for (const [partName, originalBytes] of originalProtectedParts) {
       const currentEntry = zip.file(partName);
       if (!currentEntry) {
@@ -1923,6 +1940,17 @@
         relationshipBytes.some((byte, index) => byte !== originalBytes[index])
       ) {
         throw new Error('Проверка собранного DOCX выявила изменение связей: ' + relationshipName);
+      }
+    }
+
+    for (const partName of originalMediaParts.keys()) {
+      const verifiedEntry = verifiedZip.file(partName);
+      if (!verifiedEntry) throw new Error('В собранном DOCX отсутствует изображение или медиа: ' + partName);
+      const verifiedBytes = await verifiedEntry.async('uint8array');
+      const originalBytes = originalMediaParts.get(partName);
+      if (verifiedBytes.length !== originalBytes.length ||
+          verifiedBytes.some((byte, index) => byte !== originalBytes[index])) {
+        throw new Error('Проверка собранного DOCX выявила изменение изображения или медиа: ' + partName);
       }
     }
 
