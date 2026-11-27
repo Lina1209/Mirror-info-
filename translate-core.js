@@ -1189,18 +1189,26 @@
     async function translateTextGroups(groups, namespace, tagName) {
       for (const group of groups) {
         let nodes = Array.from(group.getElementsByTagNameNS(namespace, tagName));
-        // Не меняем текст, удалённый через Track Changes: он остаётся
-        // в документе для истории правок, но не является текущим содержимым.
-        if (namespace === wordNs && tagName === 't') {
-          nodes = nodes.filter(node => {
-            let parent = node.parentElement;
-            while (parent && parent !== group) {
-              if (parent.namespaceURI === wordNs && parent.localName === 'del') return false;
-              parent = parent.parentElement;
-            }
-            return true;
-          });
-        }
+        nodes = nodes.filter(node => {
+          let parent = node.parentElement;
+          while (parent && parent !== group) {
+            // Не захватываем содержимое вложенного абзаца (например,
+            // текстового блока внутри рисунка): он будет обработан отдельно.
+            if (
+              parent.namespaceURI === group.namespaceURI &&
+              parent.localName === group.localName
+            ) return false;
+            // Удалённые фрагменты Track Changes не являются текущим текстом.
+            if (
+              namespace === wordNs &&
+              tagName === 't' &&
+              parent.namespaceURI === wordNs &&
+              parent.localName === 'del'
+            ) return false;
+            parent = parent.parentElement;
+          }
+          return parent === group;
+        });
         if (!nodes.length) continue;
         const source = nodes.map(node => node.textContent || '').join('');
         if (!source.trim()) continue;
