@@ -79,7 +79,7 @@
           const output = await merged.save({ useObjectStreams: true });
           const result = await inspect(output);
           assert(result.pages.length === 4, 'Four pages survive a two-batch merge');
-          assert(result.pages[0].width > result.pages[0].height, 'A4 portrait source page geometry is preserved (jsPDF default points orientation check)');
+          assert(result.pages[0].width < result.pages[0].height, 'A4 portrait source page geometry is preserved');
           assert(result.pages[1].width > result.pages[1].height, 'Landscape page geometry is preserved');
           assert(result.externalLinks >= 2, 'External URI link annotations survive from both batches');
           assert(result.internalLinks >= 2, 'Internal link annotations remain present in the merged output');
