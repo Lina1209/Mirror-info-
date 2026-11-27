@@ -1225,6 +1225,72 @@
         throw new Error('PDF не содержит страниц для сборки.');
       }
 
+      // Переносим дерево закладок PDF, сохраняя вложенность и переходы на страницы.
+      // jsPDF 2.5.x включает Outline plugin; при отсутствии API исходный перевод не прерываем.
+      try {
+        const sourceOutline = typeof sourcePdf.getOutline === 'function'
+          ? await sourcePdf.getOutline()
+          : null;
+        const outlineApi = outputPdf.outline;
+        if (Array.isArray(sourceOutline) && sourceOutline.length &&
+            outlineApi && typeof outlineApi.add === 'function') {
+          let addedOutlineItems = 0;
+          const MAX_OUTLINE_ITEMS = 2000;
+          const MAX_OUTLINE_DEPTH = 32;
+
+          const resolveOutlinePage = async destinationValue => {
+            try {
+              let destination = destinationValue;
+              if (typeof destination === 'string') {
+                destination = await sourcePdf.getDestination(destination);
+              }
+              if (!Array.isArray(destination) || !destination.length) return null;
+              const pageReference = destination[0];
+              const pageIndex = Number.isInteger(pageReference)
+                ? pageReference
+                : await sourcePdf.getPageIndex(pageReference);
+              return Number.isInteger(pageIndex) &&
+                pageIndex >= 0 && pageIndex < sourcePdf.numPages
+                ? pageIndex + 1
+                : null;
+            } catch (_) {
+              return null;
+            }
+          };
+
+          const addOutlineItems = async (items, parent, depth) => {
+            if (!Array.isArray(items) || depth > MAX_OUTLINE_DEPTH) return;
+            for (const item of items) {
+              if (addedOutlineItems >= MAX_OUTLINE_ITEMS) return;
+              if (!item || typeof item.title !== 'string' || !item.title.trim()) continue;
+              const pageNumber = await resolveOutlinePage(item.dest);
+              if (!pageNumber) continue;
+
+              const originalTitle = item.title.replace(/[\\u0000-\\u001F\\u007F]/g, ' ').trim().slice(0, 500);
+              let translatedTitle = originalTitle;
+              try {
+                const candidate = await translateInParts(originalTitle);
+                if (typeof candidate === 'string' && candidate.trim()) {
+                  translatedTitle = candidate.trim().slice(0, 500);
+                }
+              } catch (_) {
+                // Если перевод названия закладки не удался, оставляем исходное название.
+              }
+
+              const node = outlineApi.add(parent || null, translatedTitle, { pageNumber });
+              addedOutlineItems += 1;
+              if (Array.isArray(item.items) && item.items.length) {
+                await addOutlineItems(item.items, node, depth + 1);
+              }
+            }
+          };
+
+          await addOutlineItems(sourceOutline, null, 0);
+        }
+      } catch (_) {
+        // Недоступные или повреждённые закладки не должны блокировать создание PDF.
+      }
+
       // Переносим доступные описательные метаданные исходного PDF.
       // Технические поля сборщика (producer/версия) оставляем новому PDF.
       try {
