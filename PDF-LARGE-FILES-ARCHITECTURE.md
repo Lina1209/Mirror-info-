@@ -305,3 +305,10 @@ Chromium Actions run [45981600672](https://github.com/Lina1209/Mirror-info-/acti
 GitHub Actions run [45981787739](https://github.com/Lina1209/Mirror-info-/actions/runs/45981787739) completed successfully in Chromium on commit `6217d02298d84b1e2677433510046a819778dfed`. The full compatibility harness passed, including the existing synthetic `/AS /On` state-dictionary fixture and all prior page, link, outline, annotation, and simple reconstructed AcroForm assertions. The run also confirms the known baseline: a plain `copyPages` merge has zero document-level AcroForm fields; the simple field fixtures pass only after the separate reconstruction prototype. The harness still does not establish general real-world PDF compatibility or bounded-memory production merging.
 
 A follow-up regression fixture now adds a second Stamp annotation with `/AS /Off`, alongside the existing `/AS /On` annotation, and asserts that both named appearance streams remain present after merge. Its new Actions run is pending; no result is claimed yet.
+
+
+### Both active appearance states regression (2026-11-27)
+
+GitHub Actions run [45981981671](https://github.com/Lina1209/Mirror-info-/actions/runs/45981981671) completed successfully in Chromium on commit `a5faf68ad8c620eaa8b2deb94024311496d736f6`. The fixture now creates two synthetic Stamp annotations, one with `/AS /On` and one with `/AS /Off`. Before and after `copyPages` merge, assertions verify that each annotation selects its matching state and that both `/On` and `/Off` normal-appearance Form XObject streams are present and non-empty. The complete existing synthetic compatibility harness also passed.
+
+This is a structural dictionary/stream check only. It does not prove visual rendering of either state in Acrobat or other viewers, interactive state toggling, arbitrary appearance resources, or production-scale PDF merge behavior. The separate known AcroForm limitation remains: the plain `copyPages` merge has no document-level field tree; only the explicitly reconstructed simple test fields pass.
