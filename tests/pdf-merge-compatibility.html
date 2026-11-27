@@ -96,6 +96,26 @@
         annotation.set(name('C'), numbers([1, 1, 0]));
         page.node.addAnnot(context.register(annotation));
       }
+      function addMarkupAnnotation(document, page, subtype, contents) {
+        const { PDFDict, PDFName, PDFArray, PDFNumber, PDFString } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const numbers = values => {
+          const array = PDFArray.withContext(context);
+          values.forEach(value => array.push(PDFNumber.of(value)));
+          return array;
+        };
+        const annotation = PDFDict.withContext(context);
+        annotation.set(name('Type'), name('Annot'));
+        annotation.set(name('Subtype'), name(subtype));
+        annotation.set(name('Rect'), numbers([45, 215, 260, 240]));
+        if (subtype === 'Underline' || subtype === 'StrikeOut') {
+          annotation.set(name('QuadPoints'), numbers([45, 240, 260, 240, 45, 215, 260, 215]));
+        }
+        annotation.set(name('Contents'), PDFString.of(contents));
+        if (subtype === 'Text') annotation.set(name('Name'), name('Comment'));
+        page.node.addAnnot(context.register(annotation));
+      }
       function addNamedDestination(document, key, pageRef) {
         const { PDFDict, PDFName, PDFArray, PDFString } = window.PDFLib;
         const context = document.context;
@@ -243,6 +263,18 @@
           addNamedDestination(second, 'chapter-start', second.getPages()[0].ref);
           addHighlightAnnotation(first, first.getPages()[0], 'Batch A preserved highlight');
           addHighlightAnnotation(second, second.getPages()[0], 'Batch B preserved highlight');
+          addMarkupAnnotation(first, first.getPages()[0], 'Underline', 'Batch A underline note');
+          addMarkupAnnotation(first, first.getPages()[0], 'StrikeOut', 'Batch A strikeout note');
+          addMarkupAnnotation(first, first.getPages()[0], 'Text', 'Batch A sticky note');
+          const sourceAInspection = await inspect(await first.save());
+          const sourceBInspection = await inspect(await second.save());
+          report('Source A annotation inventory: ' + JSON.stringify(sourceAInspection.annotationSummary));
+          report('Source B annotation inventory: ' + JSON.stringify(sourceBInspection.annotationSummary));
+          assert(sourceAInspection.annotationSummary.some(item => item.subtype === 'Highlight' && item.contents === 'Batch A preserved highlight'), 'Source A highlight fixture exposes its contents before merge');
+          assert(sourceBInspection.annotationSummary.some(item => item.subtype === 'Highlight' && item.contents === 'Batch B preserved highlight'), 'Source B highlight fixture exposes its contents before merge');
+          for (const subtype of ['Underline', 'StrikeOut', 'Text']) {
+            assert(sourceAInspection.annotationSummary.some(item => item.subtype === subtype), 'Source A ' + subtype + ' fixture is readable before merge');
+          }
           const sourceForm = first.getForm();
           const sampleField = sourceForm.createTextField('batchA.sampleField');
           sampleField.setText('Form value for merge test');
@@ -385,6 +417,9 @@
           report('Merged annotation inventory: ' + JSON.stringify(result.annotationSummary));
           report('Detected highlight contents: ' + JSON.stringify(result.highlightContents));
           assert(result.annotationSummary.filter(item => item.subtype === 'Highlight').length === 2, 'Both text highlight annotation objects survive the merge');
+          for (const subtype of ['Underline', 'StrikeOut', 'Text']) {
+            assert(result.annotationSummary.some(item => item.subtype === subtype), subtype + ' annotation object survives the merge');
+          }
           assert(result.highlightContents.every(value => value === ''), 'Highlight annotation contents are absent after copyPages merge (known metadata limitation)');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
           assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
