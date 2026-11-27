@@ -721,8 +721,8 @@
     if (
       boundary > 0 &&
       boundary < text.length &&
-      /[\\uD800-\\uDBFF]/.test(text[boundary - 1]) &&
-      /[\\uDC00-\\uDFFF]/.test(text[boundary])
+      /[\uD800-\uDBFF]/.test(text[boundary - 1]) &&
+      /[\uDC00-\uDFFF]/.test(text[boundary])
     ) boundary -= 1;
 
     return Math.max(1, boundary);
