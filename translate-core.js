@@ -1609,6 +1609,22 @@
     }
 
     const previewParts = [];
+    const MAX_DOCX_PREVIEW_CHARS = 500000;
+    let docxPreviewLength = 0;
+    let docxPreviewWasTruncated = false;
+    function appendDocxPreview(value) {
+      const separator = previewParts.length ? '\n\n' : '';
+      const content = String(value ?? '');
+      const available = MAX_DOCX_PREVIEW_CHARS - docxPreviewLength - separator.length;
+      if (available <= 0) {
+        docxPreviewWasTruncated = true;
+        return;
+      }
+      if (content.length > available) docxPreviewWasTruncated = true;
+      const piece = content.slice(0, available);
+      appendDocxPreview(separator + piece);
+      docxPreviewLength += separator.length + piece.length;
+    }
     const originalDocxTextStructures = new Map();
     const wordNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
     const drawingNs = 'http://schemas.openxmlformats.org/drawingml/2006/main';
@@ -1676,7 +1692,7 @@
         const leading = source.match(/^\s*/)?.[0] || '';
         const trailing = source.match(/\s*$/)?.[0] || '';
         const translated = await translateInParts(source.trim());
-        previewParts.push(translated);
+        appendDocxPreview(translated);
         distributeTranslatedText(leading + translated + trailing, nodes);
       }
     }
@@ -1696,7 +1712,7 @@
             const leading = original.match(/^\\s*/)?.[0] || '';
             const trailing = original.match(/\\s*$/)?.[0] || '';
             const translated = await translateInParts(original.trim());
-            previewParts.push(translated);
+            appendDocxPreview(translated);
             attribute.value = leading + translated + trailing;
           }
         }
@@ -1895,7 +1911,7 @@
     const embeddedWordFiles = zip.file(/^word\/embeddings\/.*\.docx$/i);
     for (const embedded of embeddedWordFiles) {
       if (nestingLevel >= 3) {
-        previewParts.push('Вложенный DOCX пропущен: достигнуто ограничение глубины вложения.');
+        appendDocxPreview('Вложенный DOCX пропущен: достигнуто ограничение глубины вложения.');
         continue;
       }
       const nestedBlob = new Blob(
@@ -1905,7 +1921,7 @@
       const nestedResult = await translateDocxPackage(nestedBlob, nestingLevel + 1);
       zip.file(embedded.name, await nestedResult.blob.arrayBuffer());
       if (nestedResult.text && !nestedResult.text.startsWith('В DOCX не найден')) {
-        previewParts.push(nestedResult.text);
+        appendDocxPreview(nestedResult.text);
       }
     }
 
@@ -1935,7 +1951,7 @@
           const leading = original.match(/^\\s*/)?.[0] || '';
           const trailing = original.match(/\\s*$/)?.[0] || '';
           const translated = await translateInParts(original.trim());
-          previewParts.push(translated);
+          appendDocxPreview(translated);
           element.textContent = leading + translated + trailing;
         }
       }
@@ -1947,7 +1963,7 @@
     const legacyOleParts = zip.file(/word\/embeddings\//i)
       .filter(entry => /\.(bin|xls|ppt|doc)$/i.test(entry.name));
     if (legacyOleParts.length) {
-      previewParts.push(
+      appendDocxPreview(
         'Примечание: старые встроенные OLE-объекты сохранены без изменений; их внутренний текст не переводился.'
       );
     }
@@ -2090,7 +2106,8 @@
 
     return {
       blob,
-      text: previewParts.join('\n\n') || 'В DOCX не найден текст для перевода.'
+      text: (previewParts.join('') || 'В DOCX не найден текст для перевода.') +
+        (docxPreviewWasTruncated ? '\n\n[Предпросмотр сокращён для экономии памяти. Полный перевод сохранён в DOCX.]' : '')
     };
   }
 
