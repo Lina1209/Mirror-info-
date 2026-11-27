@@ -1174,7 +1174,7 @@
   async function translateDocxPackage(file) {
     const JSZip = await ensureJSZip();
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
-    const entries = zip.file(/^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/i);
+    const entries = zip.file(/^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/i).concat(zip.file(/^word\/glossary\/document\.xml$/i));
 
     if (!entries.length) {
       throw new Error('В DOCX не найдена основная структура Word.');
@@ -1200,6 +1200,21 @@
       }
     }
 
+    async function translateDescriptionAttributes(doc, namespaces) {
+      for (const namespace of namespaces) {
+        const elements = Array.from(doc.getElementsByTagNameNS(namespace, '*'));
+        for (const element of elements) {
+          for (const attributeName of ['title', 'descr']) {
+            const attribute = element.getAttributeNode(attributeName);
+            if (!attribute || !attribute.value.trim()) continue;
+            const translated = await translateInParts(attribute.value.trim());
+            previewParts.push(translated);
+            attribute.value = translated;
+          }
+        }
+      }
+    }
+
     for (const entry of entries) {
       const doc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
       if (doc.querySelector('parsererror')) {
@@ -1210,6 +1225,12 @@
       // сносках, примечаниях и комментариях; разметка Word сохраняется.
       const paragraphs = Array.from(doc.getElementsByTagNameNS(wordNs, 'p'));
       await translateTextGroups(paragraphs, wordNs, 't');
+      // Переводим альтернативные описания объектов, не меняя их идентификаторы.
+      await translateDescriptionAttributes(doc, [
+        'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',
+        'http://schemas.openxmlformats.org/drawingml/2006/picture',
+        drawingNs
+      ]);
       zip.file(entry.name, new XMLSerializer().serializeToString(doc));
     }
 
@@ -1222,6 +1243,7 @@
       }
       const paragraphs = Array.from(doc.getElementsByTagNameNS(drawingNs, 'p'));
       await translateTextGroups(paragraphs, drawingNs, 't');
+      await translateDescriptionAttributes(doc, [drawingNs]);
 
       // Подписи категорий могут храниться в текстовом кэше диаграммы.
       // Числовые кэши не затрагиваем.
