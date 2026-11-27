@@ -1315,12 +1315,15 @@
       for (const namespace of namespaces) {
         const elements = Array.from(doc.getElementsByTagNameNS(namespace, '*'));
         for (const element of elements) {
-          for (const attributeName of ['title', 'descr']) {
+          for (const attributeName of ['title', 'descr', 'alt']) {
             const attribute = element.getAttributeNode(attributeName);
             if (!attribute || !attribute.value.trim()) continue;
-            const translated = await translateInParts(attribute.value.trim());
+            const original = attribute.value;
+            const leading = original.match(/^\\s*/)?.[0] || '';
+            const trailing = original.match(/\\s*$/)?.[0] || '';
+            const translated = await translateInParts(original.trim());
             previewParts.push(translated);
-            attribute.value = translated;
+            attribute.value = leading + translated + trailing;
           }
         }
       }
@@ -1347,6 +1350,8 @@
       await translateDescriptionAttributes(doc, [
         'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',
         'http://schemas.openxmlformats.org/drawingml/2006/picture',
+        'urn:schemas-microsoft-com:vml',
+        'urn:schemas-microsoft-com:office:office',
         drawingNs
       ]);
       if (docxStructureSignature(doc) !== originalStructure) {
