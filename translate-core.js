@@ -1763,12 +1763,15 @@
     for (const embedded of embeddedBooks) {
       const nestedZip = await JSZip.loadAsync(await embedded.async('uint8array'));
       validatePackageLimits(nestedZip, 'Встроенная книга Excel');
+      const expectedNestedStructures = new Map();
+      const expectedNestedCellValues = new Map();
       const textFiles = nestedZip.file(/^xl\/(sharedStrings|worksheets\/sheet\d+|charts\/chart\d+)\.xml$/i);
       for (const nestedEntry of textFiles) {
         const doc = new DOMParser().parseFromString(await nestedEntry.async('text'), 'application/xml');
         if (doc.querySelector('parsererror')) {
           throw new Error('Не удалось прочитать встроенную таблицу Excel: ' + nestedEntry.name);
         }
+        expectedNestedStructures.set(nestedEntry.name, docxStructureSignature(doc));
         if (nestedEntry.name.includes('sharedStrings')) {
           const groups = Array.from(doc.getElementsByTagNameNS(sheetNs, 'si'));
           await translateTextGroups(groups, sheetNs, 't');
@@ -1791,6 +1794,7 @@
               element.namespaceURI || '',
               element.textContent || ''
             ]);
+          expectedNestedCellValues.set(nestedEntry.name, protectedCellValues);
           const groups = Array.from(doc.getElementsByTagNameNS(sheetNs, 'is'));
           await translateTextGroups(groups, sheetNs, 't');
           const verifiedCellValues = Array.from(doc.getElementsByTagNameNS(sheetNs, '*'))
@@ -1807,7 +1811,23 @@
         nestedZip.file(nestedEntry.name, new XMLSerializer().serializeToString(doc));
       }
       const rebuiltNestedBytes = await nestedZip.generateAsync({ type: 'uint8array' });
-      await verifyNestedPackage(nestedZip, rebuiltNestedBytes, 'Вложенный пакет Office');
+      const verifiedNestedZip = await verifyNestedPackage(nestedZip, rebuiltNestedBytes, 'Вложенный пакет Office');
+      for (const [partName, expectedSignature] of expectedNestedStructures) {
+        const verifiedEntry = verifiedNestedZip.file(partName);
+        if (!verifiedEntry) throw new Error('После сборки Excel отсутствует XML-часть: ' + partName);
+        const verifiedDoc = new DOMParser().parseFromString(await verifiedEntry.async('text'), 'application/xml');
+        if (verifiedDoc.querySelector('parsererror') || docxStructureSignature(verifiedDoc) !== expectedSignature) {
+          throw new Error('После сборки Excel изменилась структура листа или диаграммы: ' + partName);
+        }
+        if (expectedNestedCellValues.has(partName)) {
+          const actualValues = Array.from(verifiedDoc.getElementsByTagNameNS(sheetNs, '*'))
+            .filter(element => element.localName === 'f' || element.localName === 'v')
+            .map(element => [element.localName, element.namespaceURI || '', element.textContent || '']);
+          if (JSON.stringify(actualValues) !== JSON.stringify(expectedNestedCellValues.get(partName))) {
+            throw new Error('После сборки Excel изменились формулы или значения ячеек: ' + partName);
+          }
+        }
+      }
       zip.file(embedded.name, rebuiltNestedBytes);
     }
 
@@ -1818,6 +1838,7 @@
     for (const embedded of embeddedPresentations) {
       const nestedZip = await JSZip.loadAsync(await embedded.async('uint8array'));
       validatePackageLimits(nestedZip, 'Встроенная презентация PowerPoint');
+      const expectedPresentationStructures = new Map();
       const presentationParts = nestedZip.file(/^ppt\/(slides\/slide\d+|notesSlides\/notesSlide\d+|slideLayouts\/slideLayout\d+|slideMasters\/slideMaster\d+|charts\/chart\d+|diagrams\/.*)\.xml$/i);
       for (const nestedEntry of presentationParts) {
         const doc = new DOMParser().parseFromString(await nestedEntry.async('text'), 'application/xml');
@@ -1825,6 +1846,7 @@
           throw new Error('Не удалось прочитать встроенную презентацию: ' + nestedEntry.name);
         }
         const originalPresentationStructure = docxStructureSignature(doc);
+        expectedPresentationStructures.set(nestedEntry.name, originalPresentationStructure);
         await translateTextGroups(
           Array.from(doc.getElementsByTagNameNS(drawingNs, 'p')),
           drawingNs,
@@ -1844,7 +1866,15 @@
         nestedZip.file(nestedEntry.name, new XMLSerializer().serializeToString(doc));
       }
       const rebuiltPresentation = await nestedZip.generateAsync({ type: 'uint8array' });
-      await verifyNestedPackage(nestedZip, rebuiltPresentation, 'Встроенная презентация PowerPoint');
+      const verifiedPresentationZip = await verifyNestedPackage(nestedZip, rebuiltPresentation, 'Встроенная презентация PowerPoint');
+      for (const [partName, expectedSignature] of expectedPresentationStructures) {
+        const verifiedEntry = verifiedPresentationZip.file(partName);
+        if (!verifiedEntry) throw new Error('После сборки PowerPoint отсутствует XML-часть: ' + partName);
+        const verifiedDoc = new DOMParser().parseFromString(await verifiedEntry.async('text'), 'application/xml');
+        if (verifiedDoc.querySelector('parsererror') || docxStructureSignature(verifiedDoc) !== expectedSignature) {
+          throw new Error('После сборки PowerPoint изменилась структура слайда или диаграммы: ' + partName);
+        }
+      }
       zip.file(embedded.name, rebuiltPresentation);
     }
 
