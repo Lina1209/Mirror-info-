@@ -2014,6 +2014,29 @@
     const previewParts = [];
     const chapterSelector = 'title,p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption,caption,dt,dd';
 
+    // Сигнатура защищает ссылки, якоря, ID, пути к изображениям,
+    // классы и прочие атрибуты; alt/title/aria-label переводятся отдельно.
+    function epubStructureSignature(document) {
+      return Array.from(document.getElementsByTagName('*')).map(element => {
+        const attributes = Array.from(element.attributes || [])
+          .filter(attribute => !['alt', 'title', 'aria-label'].includes(
+            (attribute.localName || attribute.name).toLowerCase()
+          ))
+          .map(attribute => [
+            attribute.namespaceURI || '',
+            attribute.name,
+            attribute.value
+          ].join('='))
+          .sort()
+          .join('|');
+        return [
+          element.namespaceURI || '',
+          element.localName || element.nodeName,
+          attributes
+        ].join('::');
+      }).join('\\n');
+    }
+
     for (const entry of [...chapterEntries, ...ncxEntries]) {
       const isNcx = /\.ncx$/i.test(entry.name);
       const xml = await entry.async('text');
@@ -2021,6 +2044,7 @@
       if (doc.querySelector('parsererror')) {
         throw new Error('Не удалось прочитать раздел EPUB: ' + entry.name);
       }
+      const originalStructure = epubStructureSignature(doc);
 
       // NCX содержит отдельные подписи оглавления в элементах <text>.
       // Переводим только их содержимое: navPoint, playOrder и content src остаются прежними.
@@ -2082,6 +2106,9 @@
         }
       }
 
+      if (epubStructureSignature(translatedDoc) !== originalStructure) {
+        throw new Error('Проверка EPUB выявила изменение ссылок, якорей, ID или путей ресурсов: ' + entry.name);
+      }
       zip.file(entry.name, new XMLSerializer().serializeToString(translatedDoc));
     }
 
