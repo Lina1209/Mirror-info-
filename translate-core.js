@@ -1172,8 +1172,57 @@
   }
 
   async function translateDocxPackage(file, nestingLevel = 0) {
+    const MAX_DOCX_INPUT_BYTES = 100 * 1024 * 1024;
+    const MAX_PACKAGE_ENTRIES = 12000;
+    const MAX_PACKAGE_UNCOMPRESSED_BYTES = 350 * 1024 * 1024;
+    const MAX_SINGLE_PART_BYTES = 100 * 1024 * 1024;
+    const MAX_COMPRESSION_RATIO = 250;
+
+    if (!file || !Number.isFinite(file.size) || file.size <= 0) {
+      throw new Error('Не удалось определить размер DOCX-файла.');
+    }
+    if (file.size > MAX_DOCX_INPUT_BYTES) {
+      throw new Error('DOCX больше 100 МБ. Разделите документ на несколько частей для безопасной обработки.');
+    }
+
     const JSZip = await ensureJSZip();
+
+    function validatePackageLimits(packageZip, label) {
+      const names = Object.keys(packageZip.files);
+      if (names.length > MAX_PACKAGE_ENTRIES) {
+        throw new Error(label + ': слишком много элементов внутри архива DOCX.');
+      }
+
+      let totalUncompressed = 0;
+      for (const name of names) {
+        const entry = packageZip.files[name];
+        if (!entry || entry.dir) continue;
+        const data = entry._data;
+        const uncompressed = Number(data?.uncompressedSize);
+        const compressed = Number(data?.compressedSize);
+        if (!Number.isFinite(uncompressed) || uncompressed < 0) {
+          throw new Error(label + ': невозможно проверить размер элемента ' + name);
+        }
+        if (uncompressed > MAX_SINGLE_PART_BYTES) {
+          throw new Error(label + ': слишком большой элемент архива — ' + name);
+        }
+        totalUncompressed += uncompressed;
+        if (totalUncompressed > MAX_PACKAGE_UNCOMPRESSED_BYTES) {
+          throw new Error(label + ': распакованный размер превышает безопасный предел 350 МБ.');
+        }
+        if (
+          uncompressed > 1024 * 1024 &&
+          Number.isFinite(compressed) &&
+          compressed > 0 &&
+          uncompressed / compressed > MAX_COMPRESSION_RATIO
+        ) {
+          throw new Error(label + ': обнаружена подозрительная степень сжатия в элементе ' + name);
+        }
+      }
+    }
+
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    validatePackageLimits(zip, 'DOCX');
     // Фиксируем состав пакета и байты relationship-файлов: перевод не должен
     // удалять ресурсы или менять связи между документом, рисунками и диаграммами.
     const originalPartNames = Object.keys(zip.files).filter(name => !zip.files[name].dir);
@@ -1292,6 +1341,8 @@
     const embeddedBooks = zip.file(/^word\/embeddings\/.*\.xlsx$/i);
     for (const embedded of embeddedBooks) {
       const nestedZip = await JSZip.loadAsync(await embedded.async('uint8array'));
+      validatePackageLimits(nestedZip, 'Встроенная презентация PowerPoint');
+      validatePackageLimits(nestedZip, 'Встроенная книга Excel');
       const textFiles = nestedZip.file(/^xl\/(sharedStrings|worksheets\/sheet\d+|charts\/chart\d+)\.xml$/i);
       for (const nestedEntry of textFiles) {
         const doc = new DOMParser().parseFromString(await nestedEntry.async('text'), 'application/xml');
