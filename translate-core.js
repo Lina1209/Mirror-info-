@@ -21,6 +21,7 @@
   let fileSelectionToken = 0;
   let ocrWorkerPromise = null;
   let ocrWorkerLanguage = '';
+  let ocrQueue = Promise.resolve();
   let lastOcrLanguage = '';
   let lastOcrFile = null;
   let pdfUnicodeFontPromise = null;
@@ -511,13 +512,19 @@
 
   // OCR изображений
   async function ocrImage(source) {
-    const worker = await ensureTesseract();
-
-    const result = await worker.recognize(source);
-    lastOcrLines = collectOcrLines(result.data);
-    lastOcrLanguage = $('srcLang')?.value || 'auto';
-
-    return result.data?.text || '';
+    // Один Tesseract worker не должен одновременно распознавать несколько
+    // изображений: сериализуем задачи и возвращаем каждой задаче её строки.
+    const task = ocrQueue.then(async () => {
+      const worker = await ensureTesseract();
+      const result = await worker.recognize(source);
+      const language = $('srcLang')?.value || 'auto';
+      const lines = collectOcrLines(result.data);
+      lastOcrLines = lines;
+      lastOcrLanguage = language;
+      return { text: result.data?.text || '', lines, language };
+    });
+    ocrQueue = task.then(() => undefined, () => undefined);
+    return task;
   }
 
   // Чтение PDF
@@ -584,7 +591,8 @@
               viewport
             }).promise;
 
-            text = await ocrImage(canvas);
+            const ocrResult = await ocrImage(canvas);
+        text = ocrResult.text;
           }
 
           if (text) {
@@ -664,7 +672,8 @@
       ].includes(ext)
     ) {
       await validateImageSize(file);
-      return await ocrImage(file);
+      const ocrResult = await ocrImage(file);
+      return ocrResult.text;
     }
 
     if (ext === 'pdf') return await readPdf(file);
@@ -1035,8 +1044,8 @@
           context.fillRect(0, 0, canvas.width, canvas.height);
           await page.render({ canvasContext: context, viewport }).promise;
 
-          await ocrImage(canvas);
-          const lines = lastOcrLines.slice();
+          const ocrResult = await ocrImage(canvas);
+          const lines = ocrResult.lines.slice();
           const translatedLines = [];
 
           for (let index = 0; index < lines.length; index += 1) {
@@ -2155,7 +2164,9 @@
     if (lastOcrFile !== file || lastOcrLanguage !== currentOcrLanguage || !lastOcrLines.length) {
       lastOcrLines = [];
       lastOcrFile = null;
-      await ocrImage(file);
+      const ocrResult = await ocrImage(file);
+      lastOcrLines = ocrResult.lines;
+      lastOcrLanguage = ocrResult.language;
       lastOcrFile = file;
     }
 
