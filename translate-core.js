@@ -1002,6 +1002,18 @@
     // Предупреждения показываем пользователю, чтобы интерактивные данные не терялись молча.
     const pdfPreservationWarnings = [];
     try {
+      if (typeof sourcePdf.getPageLabels === 'function') {
+        const pageLabels = await sourcePdf.getPageLabels();
+        if (Array.isArray(pageLabels) && pageLabels.some((label, index) => label !== String(index + 1))) {
+          pdfPreservationWarnings.push(
+            'В исходном PDF используются пользовательские метки страниц. В переведённом файле останется обычная нумерация.'
+          );
+        }
+      }
+    } catch (_) {
+      // Метки страниц не обязательны для перевода.
+    }
+    try {
       if (typeof sourcePdf.getFieldObjects === 'function') {
         const fieldObjects = await sourcePdf.getFieldObjects();
         const fields = fieldObjects && typeof fieldObjects === 'object'
@@ -1082,6 +1094,7 @@
     let expectedTextLayerCharacters = 0;
     let expectedPdfMetadata = null;
     let nonLinkAnnotationCount = 0;
+    let taggedStructureDetected = false;
     let totalRasterPixels = 0;
     const MAX_TOTAL_RASTER_PIXELS = 140000000;
 
@@ -1101,6 +1114,16 @@
 
         try {
           page = await sourcePdf.getPage(pageNumber);
+          if (!taggedStructureDetected && typeof page.getStructTree === 'function') {
+            try {
+              const structureTree = await page.getStructTree();
+              if (structureTree && Array.isArray(structureTree.children) && structureTree.children.length) {
+                taggedStructureDetected = true;
+              }
+            } catch (_) {
+              // Недоступность дерева доступности не должна прерывать обработку страницы.
+            }
+          }
           const baseViewport = page.getViewport({ scale: 1 });
           const scale = Math.min(
             1.5,
@@ -1535,6 +1558,11 @@
         }
       }
 
+      if (taggedStructureDetected) {
+        pdfPreservationWarnings.push(
+          'Исходный PDF содержит структурные теги доступности. Они не переносятся в новый файл; программа чтения с экрана может работать иначе.'
+        );
+      }
       if (nonLinkAnnotationCount > 0) {
         pdfPreservationWarnings.push(
           'Обнаружены аннотации и элементы PDF, отличные от ссылок (' +
