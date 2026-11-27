@@ -1869,9 +1869,14 @@
       zip.file(entry.name, new XMLSerializer().serializeToString(metadataDoc));
     }
 
+    // EPUB requires the mimetype entry to be stored (not compressed).
+    // Re-add it with STORE so the package generator doesn't deflate it.
+    zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
     const blob = await zip.generateAsync({
       type: 'blob',
-      mimeType: 'application/epub+zip'
+      mimeType: 'application/epub+zip',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
     });
 
     return {
@@ -1885,6 +1890,10 @@
   function fb2StructureSignature(doc) {
     return Array.from(doc.getElementsByTagName('*')).map(element => {
       const attributes = Array.from(element.attributes || [])
+        .filter(attribute =>
+          !(attribute.namespaceURI === 'http://www.w3.org/XML/1998/namespace' &&
+            attribute.localName === 'space')
+        )
         .map(attribute => [
           attribute.namespaceURI || '',
           attribute.name,
@@ -1926,7 +1935,7 @@
       }));
 
     const translatableNames = new Set([
-      'p', 'subtitle', 'title', 'v', 'date', 'annotation', 'epigraph', 'cite'
+      'p', 'subtitle', 'title', 'v', 'annotation', 'epigraph', 'cite'
     ]);
     const allElements = Array.from(doc.getElementsByTagName('*'));
     const blocks = allElements.filter(element => {
