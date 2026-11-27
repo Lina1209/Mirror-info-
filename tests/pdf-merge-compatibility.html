@@ -239,6 +239,48 @@
         context.lookup(parentRef).set(name('Popup'), popupRef);
         page.node.addAnnot(popupRef);
       }
+      function addReplyForTextAnnotation(document, page) {
+        const { PDFDict, PDFName, PDFString } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const annots = page.node.Annots();
+        if (!annots) throw new Error('Text annotation missing for reply fixture');
+        let parentRef = null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const ref = annots.get(index);
+          const annotation = context.lookup(ref);
+          const subtype = annotation.get(name('Subtype'));
+          if (subtype && subtype.toString() === '/Text') { parentRef = ref; break; }
+        }
+        if (!parentRef) throw new Error('Text annotation missing for reply fixture');
+        const reply = PDFDict.withContext(context);
+        reply.set(name('Type'), name('Annot'));
+        reply.set(name('Subtype'), name('Text'));
+        reply.set(name('Rect'), context.lookup(parentRef).get(name('Rect')));
+        reply.set(name('Contents'), PDFString.of('Batch A reply comment'));
+        reply.set(name('IRT'), parentRef);
+        reply.set(name('RT'), name('R'));
+        page.node.addAnnot(context.register(reply));
+      }
+      function hasTextReply(document, page) {
+        const { PDFName, PDFString } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return false;
+        let parentRef = null;
+        let replyRef = null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const ref = annots.get(index);
+          const annotation = document.context.lookup(ref);
+          const subtype = annotation.get(PDFName.of('Subtype'));
+          const contents = annotation.get(PDFName.of('Contents'));
+          if (subtype && subtype.toString() === '/Text' && contents instanceof PDFString && contents.decodeText() === 'Batch A sticky note') parentRef = ref;
+          if (subtype && subtype.toString() === '/Text' && contents instanceof PDFString && contents.decodeText() === 'Batch A reply comment') replyRef = { ref, annotation };
+        }
+        if (!parentRef || !replyRef) return false;
+        const target = replyRef.annotation.get(PDFName.of('IRT'));
+        const replyType = replyRef.annotation.get(PDFName.of('RT'));
+        return Boolean(target && target.toString() === parentRef.toString() && replyType && replyType.toString() === '/R');
+      }
       function hasLinkedPopup(document, page) {
         const { PDFName } = window.PDFLib;
         const annots = page.node.Annots();
@@ -437,7 +479,9 @@
           addMarkupAnnotation(first, first.getPages()[0], 'StrikeOut', 'Batch A strikeout note');
           addMarkupAnnotation(first, first.getPages()[0], 'Text', 'Batch A sticky note');
           addPopupForTextAnnotation(first, first.getPages()[0]);
+          addReplyForTextAnnotation(first, first.getPages()[0]);
           assert(hasLinkedPopup(first, first.getPages()[0]), 'Source A text note and popup have reciprocal references');
+          assert(hasTextReply(first, first.getPages()[0]), 'Source A text reply points to its parent annotation');
           assert(hasPopupGeometry(first, first.getPages()[0]), 'Source A popup rectangle and closed state are correct');
           assert(hasNormalAppearance(first, first.getPages()[0], 'Text'), 'Source A text note has a normal appearance stream');
           const sourceAInspection = await inspect(await first.save());
@@ -695,6 +739,7 @@
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'StrikeOut').includes('Batch A strikeout note'), 'StrikeOut Contents survive in the merged raw annotation dictionary');
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Text').includes('Batch A sticky note'), 'Text note Contents survive in the merged raw annotation dictionary');
           assert(hasLinkedPopup(merged, merged.getPages()[0]), 'Text note popup and reciprocal parent references survive the merge');
+          assert(hasTextReply(merged, merged.getPages()[0]), 'Text annotation reply relationship survives the merge');
           assert(hasPopupGeometry(merged, merged.getPages()[0]), 'Popup rectangle and closed state survive the merge unchanged');
           assert(hasNormalAppearance(merged, merged.getPages()[0], 'Text'), 'Text note normal appearance stream survives the merge');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
