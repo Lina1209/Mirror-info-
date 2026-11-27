@@ -252,3 +252,10 @@ This is a bounded prototype result, not general AcroForm compatibility. It uses 
 GitHub Actions Chromium run 45979745334 completed its browser test step successfully for commit 91d1e79. The test inspects raw PDF annotation dictionaries (rather than relying on PDF.js display summaries) and verifies that the Batch A Highlight annotation retains its exact eight QuadPoints coordinates and RGB color array [1, 1, 0] after merging. It also verifies that Underline and StrikeOut QuadPoints survive unchanged. Existing checks confirm the tested markup annotation objects and their raw Contents strings survive.
 
 Scope remains narrow: this verifies one synthetic Highlight geometry/color fixture and one synthetic Underline and StrikeOut geometry fixture. It does not prove appearance-stream rendering, opacity, blend modes, author/date, popup/reply chains, arbitrary real-world annotations, or fidelity in every PDF viewer. The browser test run's final result is PASS; the job cleanup was still finishing at the time of this status read.
+
+
+## Verified annotation author, modification date, and opacity in synthetic fixture
+
+Chromium browser compatibility run 45979912157 completed successfully for commit 881800c. Raw PDF dictionary assertions confirm that a synthetic Highlight annotation retains its author string ("Lina Test Author"), modification date ("D:20261127100000Z"), and opacity value (0.65) after the two-batch merge. The fixture values are also independently checked before merging.
+
+This is a focused synthetic Highlight test. It does not establish preservation of annotation appearance streams, blend modes, popup/reply relationships, arbitrary annotation subtypes, or rendering equivalence across PDF viewers. No claims are made for arbitrary real-world PDFs.
