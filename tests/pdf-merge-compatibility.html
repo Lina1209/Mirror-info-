@@ -78,6 +78,38 @@
         root.set(name('Last'), topRef);
         return topRef;
       }
+      function createOutlineRoot(document, chapterTitle, sectionTitle, chapterTargetRef, sectionTargetRef) {
+        const { PDFDict, PDFName, PDFArray, PDFString, PDFNumber } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const root = PDFDict.withContext(context);
+        root.set(name('Type'), name('Outlines'));
+        root.set(name('Count'), PDFNumber.of(2));
+        const rootRef = context.register(root);
+        const chapter = PDFDict.withContext(context);
+        const chapterRef = context.register(chapter);
+        chapter.set(name('Title'), PDFString.of(chapterTitle));
+        chapter.set(name('Parent'), rootRef);
+        chapter.set(name('Count'), PDFNumber.of(1));
+        const section = PDFDict.withContext(context);
+        const sectionRef = context.register(section);
+        section.set(name('Title'), PDFString.of(sectionTitle));
+        section.set(name('Parent'), chapterRef);
+        const makeDestination = pageRef => {
+          const dest = PDFArray.withContext(context);
+          dest.push(pageRef);
+          dest.push(name('Fit'));
+          return context.register(dest);
+        };
+        chapter.set(name('Dest'), makeDestination(chapterTargetRef));
+        section.set(name('Dest'), makeDestination(sectionTargetRef));
+        chapter.set(name('First'), sectionRef);
+        chapter.set(name('Last'), sectionRef);
+        root.set(name('First'), chapterRef);
+        root.set(name('Last'), chapterRef);
+        document.catalog.set(name('Outlines'), rootRef);
+        return rootRef;
+      }
       async function inspect(bytes) {
         const task = window.pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
         const pdf = await task.promise;
@@ -145,9 +177,11 @@
           assert(!!window.jspdf && !!window.PDFLib && !!window.pdfjsLib, 'Pinned test libraries loaded (jsPDF 2.5.2, pdf-lib 1.17.1, PDF.js 3.11.174)');
           const first = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-A', 'Mirror Info batch A'));
           const second = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-B', 'Mirror Info batch B'));
-          // Exercise inherited PDF /Rotate entries in copied pages.
+          // Exercise inherited PDF /Rotate entries and real source outline trees.
           first.getPages()[1].setRotation(window.PDFLib.degrees(90));
           second.getPages()[1].setRotation(window.PDFLib.degrees(270));
+          createOutlineRoot(first, 'Batch A chapter', 'Batch A section', first.getPages()[0].ref, first.getPages()[1].ref);
+          createOutlineRoot(second, 'Batch B chapter', 'Batch B section', second.getPages()[0].ref, second.getPages()[1].ref);
           const merged = await window.PDFLib.PDFDocument.create();
           const PDFName = window.PDFLib.PDFName;
           const PDFDict = window.PDFLib.PDFDict;
@@ -172,14 +206,22 @@
             const pageRefMap = new Map(
               sourcePages.map((page, index) => [page.ref.toString(), copied[index].ref])
             );
+            const sourceOutlineRootRef = source.catalog.get(PDFName.of('Outlines'));
+            const sourceOutlineRoot = source.context.lookup(sourceOutlineRootRef);
+            const sourceChapterRef = sourceOutlineRoot.get(PDFName.of('First'));
+            const sourceChapter = source.context.lookup(sourceChapterRef);
+            const sourceSectionRef = sourceChapter.get(PDFName.of('First'));
+            const sourceSection = source.context.lookup(sourceSectionRef);
+            const chapterTitle = source.context.lookup(sourceChapter.get(PDFName.of('Title'))).decodeText();
+            const sectionTitle = source.context.lookup(sourceSection.get(PDFName.of('Title'))).decodeText();
             previousOutlineRef = addOutlineEntry(
               merged,
               outlineRootRef,
               previousOutlineRef,
-              source === first ? 'Batch A chapter' : 'Batch B chapter',
-              source === first ? 'Batch A section' : 'Batch B section',
-              copied[0].ref,
-              copied[1].ref
+              chapterTitle,
+              sectionTitle,
+              pageRefMap.get(sourcePages[0].ref.toString()),
+              pageRefMap.get(sourcePages[1].ref.toString())
             );
             const PDFName = window.PDFLib.PDFName;
             for (let pageIndex = 0; pageIndex < sourcePages.length; pageIndex += 1) {
