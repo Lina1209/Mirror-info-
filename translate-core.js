@@ -821,104 +821,117 @@
       isEvalSupported: false
     }).promise;
 
-    if (sourcePdf.numPages > 100) {
-      throw new Error('В этом режиме PDF поддерживает до 100 страниц за один проход. Разделите большой документ на части.');
-    }
-
     let outputPdf = null;
     const previewParts = [];
 
     try {
+      if (sourcePdf.numPages > 100) {
+        throw new Error('В этом режиме PDF поддерживает до 100 страниц за один проход. Разделите большой документ на части.');
+      }
+
       for (let pageNumber = 1; pageNumber <= sourcePdf.numPages; pageNumber += 1) {
         progress(
           5 + (pageNumber - 1) / sourcePdf.numPages * 85,
           'Сохраняем страницу PDF ' + pageNumber + ' из ' + sourcePdf.numPages + '…'
         );
 
-        const page = await sourcePdf.getPage(pageNumber);
-        const baseViewport = page.getViewport({ scale: 1 });
-        const scale = Math.min(
-          1.5,
-          Math.sqrt(16000000 / Math.max(1, baseViewport.width * baseViewport.height))
-        );
-        const viewport = page.getViewport({ scale });
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
+        let page = null;
+        let canvas = null;
 
-        const context = canvas.getContext('2d', { willReadFrequently: true });
-        if (!context) {
-          throw new Error('Не удалось подготовить страницу PDF для обработки.');
-        }
+        try {
+          page = await sourcePdf.getPage(pageNumber);
+          const baseViewport = page.getViewport({ scale: 1 });
+          const scale = Math.min(
+            1.5,
+            Math.sqrt(16000000 / Math.max(1, baseViewport.width * baseViewport.height))
+          );
+          const viewport = page.getViewport({ scale });
+          canvas = document.createElement('canvas');
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
 
-        context.fillStyle = '#ffffff';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        await page.render({ canvasContext: context, viewport }).promise;
-
-        await ocrImage(canvas);
-        const lines = lastOcrLines.slice();
-        const translatedLines = [];
-
-        for (let index = 0; index < lines.length; index += 1) {
-          const translated = await translateInParts(lines[index].text.trim());
-          translatedLines.push(translated);
-          previewParts.push(translated);
-        }
-
-        lines.forEach((line, index) => {
-          const box = line.bbox;
-          const x = Math.max(0, Math.floor(box.x0));
-          const y = Math.max(0, Math.floor(box.y0));
-          const width = Math.max(1, Math.min(canvas.width - x, Math.ceil(box.x1 - box.x0)));
-          const height = Math.max(1, Math.min(canvas.height - y, Math.ceil(box.y1 - box.y0)));
-          if (x >= canvas.width || y >= canvas.height) return;
-
-          context.fillStyle = sampleBackgroundColor(context, box, canvas.width, canvas.height);
-          context.fillRect(Math.max(0, x - 2), Math.max(0, y - 1), width + 4, height + 2);
-
-          let fontSize = Math.max(7, Math.min(30, height * 0.78));
-          context.font = '600 ' + fontSize + 'px Arial, sans-serif';
-          context.textAlign = 'left';
-          context.textBaseline = 'middle';
-
-          while (
-            fontSize > 6 &&
-            context.measureText(translatedLines[index]).width > width + 2
-          ) {
-            fontSize -= 1;
-            context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          if (!context) {
+            throw new Error('Не удалось подготовить страницу PDF для обработки.');
           }
 
-          context.fillStyle = '#202020';
-          context.fillText(
-            translatedLines[index],
-            x,
-            y + height / 2,
-            Math.max(1, width)
-          );
-        });
+          context.fillStyle = '#ffffff';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          await page.render({ canvasContext: context, viewport }).promise;
 
-        const pageWidth = viewport.width / scale;
-        const pageHeight = viewport.height / scale;
-        const orientation = pageWidth > pageHeight ? 'landscape' : 'portrait';
-        const pageImage = canvas.toDataURL('image/jpeg', 0.92);
+          await ocrImage(canvas);
+          const lines = lastOcrLines.slice();
+          const translatedLines = [];
 
-        if (!outputPdf) {
-          outputPdf = new JsPDF({
-            orientation,
-            unit: 'pt',
-            format: [pageWidth, pageHeight],
-            compress: true
+          for (let index = 0; index < lines.length; index += 1) {
+            const translated = await translateInParts(lines[index].text.trim());
+            translatedLines.push(translated);
+            previewParts.push(translated);
+          }
+
+          lines.forEach((line, index) => {
+            const box = line.bbox;
+            const x = Math.max(0, Math.floor(box.x0));
+            const y = Math.max(0, Math.floor(box.y0));
+            const width = Math.max(1, Math.min(canvas.width - x, Math.ceil(box.x1 - box.x0)));
+            const height = Math.max(1, Math.min(canvas.height - y, Math.ceil(box.y1 - box.y0)));
+            if (x >= canvas.width || y >= canvas.height) return;
+
+            context.fillStyle = sampleBackgroundColor(context, box, canvas.width, canvas.height);
+            context.fillRect(Math.max(0, x - 2), Math.max(0, y - 1), width + 4, height + 2);
+
+            let fontSize = Math.max(7, Math.min(30, height * 0.78));
+            context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+            context.textAlign = 'left';
+            context.textBaseline = 'middle';
+
+            while (
+              fontSize > 6 &&
+              context.measureText(translatedLines[index]).width > width + 2
+            ) {
+              fontSize -= 1;
+              context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+            }
+
+            context.fillStyle = '#202020';
+            context.fillText(
+              translatedLines[index],
+              x,
+              y + height / 2,
+              Math.max(1, width)
+            );
           });
-        } else {
-          outputPdf.addPage([pageWidth, pageHeight], orientation);
+
+          const pageWidth = viewport.width / scale;
+          const pageHeight = viewport.height / scale;
+          const orientation = pageWidth > pageHeight ? 'landscape' : 'portrait';
+          const pageImage = canvas.toDataURL('image/jpeg', 0.92);
+
+          if (!outputPdf) {
+            outputPdf = new JsPDF({
+              orientation,
+              unit: 'pt',
+              format: [pageWidth, pageHeight],
+              compress: true
+            });
+          } else {
+            outputPdf.addPage([pageWidth, pageHeight], orientation);
+          }
+
+          outputPdf.addImage(pageImage, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+        } finally {
+          if (canvas) {
+            canvas.width = 0;
+            canvas.height = 0;
+          }
+          if (page) {
+            try {
+              await page.cleanup();
+            } catch (_) {
+              // Ошибка очистки одной страницы не должна скрывать основную ошибку обработки.
+            }
+          }
         }
-
-        outputPdf.addImage(pageImage, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
-
-        canvas.width = 0;
-        canvas.height = 0;
-        await page.cleanup();
 
         progress(
           5 + pageNumber / sourcePdf.numPages * 85,
@@ -936,7 +949,11 @@
         text: previewParts.join('\n\n') || 'Текст на страницах PDF не распознан.'
       };
     } finally {
-      await sourcePdf.destroy();
+      try {
+        await sourcePdf.destroy();
+      } catch (_) {
+        // Освобождение PDF.js ресурсов не должно заменять исходную ошибку.
+      }
     }
   }
 
