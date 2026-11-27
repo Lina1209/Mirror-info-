@@ -1475,13 +1475,17 @@
       }
 
       const blob = outputPdf.output('blob');
+      // После формирования Blob jsPDF больше не нужен: освобождаем его
+      // до повторного чтения и проверки готового файла.
+      outputPdf = null;
 
-      // Проверяем уже собранный PDF независимым повторным чтением:
-      // архив должен открываться, а количество страниц — совпадать с оригиналом.
+      // Проверяем уже собранный PDF через временный Blob URL. Это позволяет
+      // PDF.js читать результат без создания второй полной ArrayBuffer-копии.
       let verifiedPdf = null;
+      const verificationUrl = URL.createObjectURL(blob);
       try {
         verifiedPdf = await pdfjs.getDocument({
-          data: await blob.arrayBuffer(),
+          url: verificationUrl,
           isEvalSupported: false
         }).promise;
         if (verifiedPdf.numPages !== sourcePdf.numPages) {
@@ -1557,6 +1561,7 @@
         if (verifiedPdf) {
           try { await verifiedPdf.destroy(); } catch (_) {}
         }
+        URL.revokeObjectURL(verificationUrl);
       }
 
       if (taggedStructureDetected) {
