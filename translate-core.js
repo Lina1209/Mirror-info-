@@ -1258,12 +1258,27 @@
             }
           };
 
+          const findFirstOutlinePage = async (items, depth) => {
+            if (!Array.isArray(items) || depth > MAX_OUTLINE_DEPTH) return null;
+            for (const child of items) {
+              if (!child) continue;
+              const directPage = await resolveOutlinePage(child.dest);
+              if (directPage) return directPage;
+              const nestedPage = await findFirstOutlinePage(child.items, depth + 1);
+              if (nestedPage) return nestedPage;
+            }
+            return null;
+          };
+
           const addOutlineItems = async (items, parent, depth) => {
             if (!Array.isArray(items) || depth > MAX_OUTLINE_DEPTH) return;
             for (const item of items) {
               if (addedOutlineItems >= MAX_OUTLINE_ITEMS) return;
               if (!item || typeof item.title !== 'string' || !item.title.trim()) continue;
-              const pageNumber = await resolveOutlinePage(item.dest);
+              // У некоторых PDF узел-раздел не имеет собственного адреса,
+              // но содержит дочерние пункты. Привязываем его к первой странице потомков.
+              const pageNumber = await resolveOutlinePage(item.dest) ||
+                await findFirstOutlinePage(item.items, depth + 1);
               if (!pageNumber) continue;
 
               const originalTitle = item.title.replace(/[\\u0000-\\u001F\\u007F]/g, ' ').trim().slice(0, 500);
@@ -1277,7 +1292,10 @@
                 // Если перевод названия закладки не удался, оставляем исходное название.
               }
 
-              const node = outlineApi.add(parent || null, translatedTitle, { pageNumber });
+              const outlineOptions = { pageNumber };
+              if (item.bold === true) outlineOptions.bold = true;
+              if (item.italic === true) outlineOptions.italic = true;
+              const node = outlineApi.add(parent || null, translatedTitle, outlineOptions);
               addedOutlineItems += 1;
               if (Array.isArray(item.items) && item.items.length) {
                 await addOutlineItems(item.items, node, depth + 1);
