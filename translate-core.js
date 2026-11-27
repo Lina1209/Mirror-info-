@@ -1186,6 +1186,28 @@
         throw new Error('PDF не содержит страниц для сборки.');
       }
 
+      // Переносим доступные описательные метаданные исходного PDF.
+      // Технические поля сборщика (producer/версия) оставляем новому PDF.
+      try {
+        const metadata = await sourcePdf.getMetadata();
+        const info = metadata?.info || {};
+        const cleanMetadata = value => typeof value === 'string'
+          ? value.replace(/[\\u0000-\\u001F\\u007F]/g, ' ').trim().slice(0, 4000)
+          : '';
+        const properties = {
+          title: cleanMetadata(info.Title),
+          subject: cleanMetadata(info.Subject),
+          author: cleanMetadata(info.Author),
+          keywords: cleanMetadata(info.Keywords),
+          creator: cleanMetadata(info.Creator)
+        };
+        if (Object.values(properties).some(Boolean) && typeof outputPdf.setProperties === 'function') {
+          outputPdf.setProperties(properties);
+        }
+      } catch (_) {
+        // Недоступные или повреждённые метаданные не должны блокировать перевод страниц.
+      }
+
       const blob = outputPdf.output('blob');
       return {
         blob,
