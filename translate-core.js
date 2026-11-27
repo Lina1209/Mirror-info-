@@ -1684,7 +1684,12 @@
       }
     }
 
-    for (const entry of entries) {
+    for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+      const entry = entries[entryIndex];
+      progress(
+        42 + (entryIndex / Math.max(1, entries.length)) * 43,
+        'Обрабатываем структуру Word: часть ' + (entryIndex + 1) + ' из ' + entries.length + '…'
+      );
       const doc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
       if (doc.querySelector('parsererror')) {
         throw new Error('Не удалось прочитать часть DOCX: ' + entry.name);
@@ -2158,7 +2163,13 @@
       }).join('\\n');
     }
 
-    for (const entry of [...chapterEntries, ...ncxEntries]) {
+    const epubTextEntries = [...chapterEntries, ...ncxEntries];
+    for (let entryIndex = 0; entryIndex < epubTextEntries.length; entryIndex += 1) {
+      const entry = epubTextEntries[entryIndex];
+      progress(
+        42 + (entryIndex / Math.max(1, epubTextEntries.length)) * 43,
+        'Обрабатываем главы EPUB: ' + (entryIndex + 1) + ' из ' + epubTextEntries.length + '…'
+      );
       const isNcx = /\.ncx$/i.test(entry.name);
       const xml = await entry.async('text');
       const doc = new DOMParser().parseFromString(xml, 'application/xml');
