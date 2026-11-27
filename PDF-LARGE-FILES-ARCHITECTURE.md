@@ -77,7 +77,7 @@ The harness checks:
 - internal link destination resolution and exact expected target page after concatenation (batch A page 2 and batch B page 4);
 - merged title metadata and successful PDF.js reopening.
 
-This is an isolated compatibility experiment, not a production merger. GitHub Actions run `45975966177` completed successfully in Chromium on 2026-11-27. It verified four merged pages, portrait/landscape dimensions, extractable text, two external URI links, exact internal targets (source page 1 → merged page 2 and source page 3 → merged page 4), metadata, and PDF.js reopening. A follow-up test now adds `/Rotate` values of 90° and 270° to copied pages and asserts they survive; its CI result is pending. Cross-batch links, bookmarks/outlines, forms, signatures, attachments, tagged structure, large-file memory, and Cloudflare Workers compatibility remain unverified. The test page is not loaded by the production app and does not change the PDF translation path.
+This is an isolated compatibility experiment, not a production merger. GitHub Actions run `45975966177` completed successfully in Chromium on 2026-11-27. It verified four merged pages, portrait/landscape dimensions, extractable text, two external URI links, exact internal targets (source page 1 → merged page 2 and source page 3 → merged page 4), metadata, and PDF.js reopening. A follow-up Chromium run `45976274252` also passed: `/Rotate` values of 90° and 270° survived copying and merging, and the test separately verified page boxes independent of rotation. Cross-batch links, bookmarks/outlines, forms, signatures, attachments, tagged structure, large-file memory, and Cloudflare Workers compatibility remain unverified. The test page is not loaded by the production app and does not change the PDF translation path.
 
 ## Immediate decision
 
@@ -127,5 +127,10 @@ This automation validates only the small synthetic merge fixture. It does not te
 ## Verified compatibility evidence
 
 - Run `45975966177` — **success** (Chromium; commit `0742ff3`). Internal link destinations were verified at zero-based page indexes 1 and 3, with no broken internal links.
-- Run for commit `15884c9` — adds explicit 90°/270° page-rotation assertions. Do not treat this as verified until its GitHub Actions run is green.
+- Run `45976274252` — **success** (commit `5bdd764`). Explicit 90°/270° page rotations survived the merge; the test measured unrotated page boxes separately from rotation.
 - Bookmark/outline preservation is still an open requirement. The current `copyPages` spike does not copy catalog-level outline trees; do not imply that it does. Add a dedicated fixture and test before claiming bookmark support.
+
+
+## Remaining PDF feature gaps after the passing small-file tests
+
+The current test proves only the listed page-level properties for synthetic files. It does not establish preservation of PDF outlines/bookmarks or named destinations, form fields, digital signatures, embedded files, tagged accessibility structure, or arbitrary annotations. These features must be tested separately against representative source PDFs. Until then, the application must not promise that PDF bookmarks or interactive form features survive translation or merge. The successful Cloudflare Pages result for this branch is a **preview deployment**, not a production deployment; it does not change the production `main` site.
