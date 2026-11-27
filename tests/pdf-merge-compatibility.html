@@ -260,6 +260,27 @@
         const backReference = parent.get(PDFName.of('Popup'));
         return Boolean(parentSubtype && parentSubtype.toString() === '/Text' && backReference && backReference.toString() === popupRef.toString());
       }
+      function hasPopupGeometry(document, page) {
+        const { PDFName, PDFArray, PDFNumber } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return false;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const subtype = annotation.get(PDFName.of('Subtype'));
+          if (!subtype || subtype.toString() !== '/Popup') continue;
+          const rect = document.context.lookup(annotation.get(PDFName.of('Rect')));
+          if (!(rect instanceof PDFArray) || rect.size() !== 4) return false;
+          const values = [];
+          for (let part = 0; part < 4; part += 1) {
+            const number = document.context.lookup(rect.get(part));
+            if (!(number instanceof PDFNumber)) return false;
+            values.push(number.asNumber());
+          }
+          const open = annotation.get(PDFName.of('Open'));
+          return values.join(',') === '270,215,420,330' && open && open.toString() === 'false';
+        }
+        return false;
+      }
       function addNamedDestination(document, key, pageRef) {
         const { PDFDict, PDFName, PDFArray, PDFString } = window.PDFLib;
         const context = document.context;
@@ -417,6 +438,7 @@
           addMarkupAnnotation(first, first.getPages()[0], 'Text', 'Batch A sticky note');
           addPopupForTextAnnotation(first, first.getPages()[0]);
           assert(hasLinkedPopup(first, first.getPages()[0]), 'Source A text note and popup have reciprocal references');
+          assert(hasPopupGeometry(first, first.getPages()[0]), 'Source A popup rectangle and closed state are correct');
           assert(hasNormalAppearance(first, first.getPages()[0], 'Text'), 'Source A text note has a normal appearance stream');
           const sourceAInspection = await inspect(await first.save());
           const sourceBInspection = await inspect(await second.save());
@@ -673,6 +695,7 @@
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'StrikeOut').includes('Batch A strikeout note'), 'StrikeOut Contents survive in the merged raw annotation dictionary');
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Text').includes('Batch A sticky note'), 'Text note Contents survive in the merged raw annotation dictionary');
           assert(hasLinkedPopup(merged, merged.getPages()[0]), 'Text note popup and reciprocal parent references survive the merge');
+          assert(hasPopupGeometry(merged, merged.getPages()[0]), 'Popup rectangle and closed state survive the merge unchanged');
           assert(hasNormalAppearance(merged, merged.getPages()[0], 'Text'), 'Text note normal appearance stream survives the merge');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
           assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
