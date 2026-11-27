@@ -881,7 +881,7 @@
     const originalName = String(file?.name || 'mirror-info-translation');
     const safeName = originalName
       .replace(/^.*[\\/]/, '')
-      .replace(/[\\u0000-\\u001f\\u007f]/g, '')
+      .replace(/[\u0000-\u001f\u007f]/g, '')
       .replace(/\.[^.]+$/, '')
       .trim()
       .slice(0, 160);
