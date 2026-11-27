@@ -180,3 +180,18 @@ Product implication: until a dedicated field-tree reconstruction strategy is imp
 GitHub Actions run `45977595154` (commit `b63ac85`) completed in Chromium. PDF.js found two `Highlight` annotation objects after the merge, one on each source batch page. However, both returned empty `contents` strings, despite the source fixture assigning descriptive contents. The prior assertion incorrectly treated missing annotation contents as proof that the highlight objects themselves were absent. The harness now separates these outcomes: it checks for two surviving Highlight objects and separately records that their contents metadata is missing. This narrow fixture does not verify appearance streams, QuadPoints fidelity, color, opacity, author, dates, or arbitrary markup annotations.
 
 AcroForm remains independently unsupported by the tested `copyPages` path: the same run observed a widget annotation on batch A but zero document-level fields. A widget annotation without a corresponding field tree is not an editable form. Do not claim form preservation.
+
+
+## Corrected annotation-content verification (Chromium)
+
+GitHub Actions run `45978118270` completed successfully on 2026-11-27 (commit `0f6ee60`). The earlier PDF.js-facing diagnostic was insufficient: PDF.js returned empty `annotation.contents` values even for the source fixture, although the raw PDF annotation dictionaries contained the assigned `/Contents` strings. The harness now checks those raw dictionaries directly before and after merging.
+
+Verified in this synthetic fixture:
+- Source Highlight contents exist in both input PDFs.
+- Two Highlight annotation objects survive the merge; the Batch A raw `/Contents` value survives.
+- Underline, StrikeOut, and Text annotation objects survive; their tested raw `/Contents` values survive.
+- Existing page geometry, rotation, text extraction, URI/internal links, named destinations, and two-level outlines also pass.
+
+This corrects the earlier interpretation that Highlight `Contents` had been lost: the prior observation was a PDF.js inspection limitation, not evidence that `pdf-lib.copyPages` removed those raw strings. The harness currently checks the Batch A markup contents after merge and verifies source contents in both batches; it does not yet assert every annotation dictionary key or appearance stream for every annotation type.
+
+**Still unverified:** QuadPoints fidelity, appearance streams, color/opacity, author/date metadata, popup/reply relationships, arbitrary annotation subtypes, and real-world PDF files. AcroForm field-tree preservation remains a separate known failure (zero fields after `copyPages`); a surviving Widget annotation is not an editable form.
