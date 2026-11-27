@@ -2895,6 +2895,21 @@
 
         clearError();
 
+        // Единный входной предел защищает все форматы до чтения/распаковки.
+        // Форматные обработчики ниже дополнительно проверяют распакованный объём,
+        // число страниц и число пикселей.
+        const MAX_BROWSER_INPUT_BYTES = 100 * 1024 * 1024;
+        if (!Number.isFinite(file.size) || file.size <= 0) {
+          clearSelection();
+          showError('Выбран пустой файл или не удалось определить его размер.');
+          return;
+        }
+        if (file.size > MAX_BROWSER_INPUT_BYTES) {
+          clearSelection();
+          showError('Файл больше 100 МБ. Для безопасной обработки в браузере разделите его на несколько частей.');
+          return;
+        }
+
         selectedFile = file;
         selectedFileText = '';
         translatedAssetBlob = null;
@@ -2940,6 +2955,7 @@
         } catch (error) {
           if (selectionToken !== fileSelectionToken || selectedFile !== file) return;
           hideProgress();
+          clearSelection();
 
           showError(
             error.message || 'Не удалось прочитать файл.'
