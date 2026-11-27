@@ -78,6 +78,24 @@
         root.set(name('Last'), topRef);
         return topRef;
       }
+      function addHighlightAnnotation(document, page, contents) {
+        const { PDFDict, PDFName, PDFArray, PDFNumber, PDFString } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const numbers = values => {
+          const array = PDFArray.withContext(context);
+          values.forEach(value => array.push(PDFNumber.of(value)));
+          return array;
+        };
+        const annotation = PDFDict.withContext(context);
+        annotation.set(name('Type'), name('Annot'));
+        annotation.set(name('Subtype'), name('Highlight'));
+        annotation.set(name('Rect'), numbers([45, 245, 260, 270]));
+        annotation.set(name('QuadPoints'), numbers([45, 270, 260, 270, 45, 245, 260, 245]));
+        annotation.set(name('Contents'), PDFString.of(contents));
+        annotation.set(name('C'), numbers([1, 1, 0]));
+        page.node.addAnnot(context.register(annotation));
+      }
       function addNamedDestination(document, key, pageRef) {
         const { PDFDict, PDFName, PDFArray, PDFString } = window.PDFLib;
         const context = document.context;
@@ -136,6 +154,7 @@
         const pageTexts = [];
         let externalLinks = 0;
         let internalLinks = 0;
+        const highlightContents = [];
         let resolvedInternalLinks = 0;
         let brokenInternalLinks = 0;
         const externalUrls = [];
@@ -149,6 +168,7 @@
           pageTexts.push(textContent.items.map(item => item.str).join(' '));
           const annotations = await page.getAnnotations();
           for (const annotation of annotations) {
+            if (annotation.subtype === 'Highlight') highlightContents.push(annotation.contents || '');
             if (typeof annotation.url === 'string' && annotation.url.startsWith('https://')) {
               externalLinks += 1;
               externalUrls.push(annotation.url);
@@ -200,7 +220,7 @@
         }
         const metadata = await pdf.getMetadata();
         await pdf.destroy();
-        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, outlineTargets, namedDestinationTargets, formFieldCount, title: metadata.info && metadata.info.Title };
+        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, outlineTargets, namedDestinationTargets, formFieldCount, highlightContents, title: metadata.info && metadata.info.Title };
       }
       button.addEventListener('click', async function () {
         lines.length = 0;
@@ -219,6 +239,8 @@
           createOutlineRoot(second, 'Batch B chapter', 'Batch B section', second.getPages()[0].ref, second.getPages()[1].ref);
           addNamedDestination(first, 'chapter-start', first.getPages()[0].ref);
           addNamedDestination(second, 'chapter-start', second.getPages()[0].ref);
+          addHighlightAnnotation(first, first.getPages()[0], 'Batch A preserved highlight');
+          addHighlightAnnotation(second, second.getPages()[0], 'Batch B preserved highlight');
           const sourceForm = first.getForm();
           const sampleField = sourceForm.createTextField('batchA.sampleField');
           sampleField.setText('Form value for merge test');
@@ -357,6 +379,8 @@
           assert(result.externalUrls.includes('https://example.com/batch-a') && result.externalUrls.includes('https://example.com/batch-b'), 'Both batch external link targets are retained');
           assert(result.title === 'Mirror Info merged compatibility test', 'Merged PDF metadata can be written and read back');
           report('AcroForm field count after copyPages merge: ' + result.formFieldCount);
+          assert(result.formFieldCount === 0, 'Known limitation is explicit: copyPages does not preserve the document-level AcroForm field tree');
+          assert(result.highlightContents.length === 2 && result.highlightContents.includes('Batch A preserved highlight') && result.highlightContents.includes('Batch B preserved highlight'), 'Text highlight annotations from both source batches survive the merge');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
           assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
           assert(namedTargets.get('batch-b-chapter-start') === 2, 'Batch B named destination resolves to merged page 3');
@@ -369,6 +393,7 @@
           report('PDF outline targets: ' + JSON.stringify(result.outlineTargets));
           report('Named destination targets: ' + JSON.stringify(result.namedDestinationTargets));
           report('Merged AcroForm field count: ' + result.formFieldCount);
+          report('Merged highlight annotations: ' + JSON.stringify(result.highlightContents));
           report('Page geometry: ' + JSON.stringify(result.pages));
           report('Page rotations: ' + JSON.stringify(result.rotations));
           report('Extracted text by page: ' + JSON.stringify(result.pageTexts));
