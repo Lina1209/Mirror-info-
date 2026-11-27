@@ -951,6 +951,17 @@
   }
 
 
+
+
+  function clearTranslatedAssetPreview() {
+    const preview = $('resultAssetPreview');
+    if (!preview) return;
+    if (preview.dataset.objectUrl) {
+      URL.revokeObjectURL(preview.dataset.objectUrl);
+    }
+    preview.remove();
+  }
+
   // Показ результата
   function showResult(file, text) {
     if ($('resultMeta')) {
@@ -990,6 +1001,7 @@
     translatedAssetBlob = null;
     translatedAssetName = '';
     lastOcrLines = [];
+    clearTranslatedAssetPreview();
 
     if ($('fileInput')) {
       $('fileInput').value = '';
@@ -1097,6 +1109,8 @@
         translatedAssetBlob = null;
         translatedAssetName = '';
         lastOcrLines = [];
+        clearTranslatedAssetPreview();
+        $('resultWrap')?.classList.add('hidden');
 
         updateFileChip(file);
 
