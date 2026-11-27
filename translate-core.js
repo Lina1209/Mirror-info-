@@ -1353,6 +1353,40 @@
       }
 
       const blob = outputPdf.output('blob');
+
+      // Проверяем уже собранный PDF независимым повторным чтением:
+      // архив должен открываться, а количество страниц — совпадать с оригиналом.
+      let verifiedPdf = null;
+      try {
+        verifiedPdf = await pdfjs.getDocument({
+          data: await blob.arrayBuffer(),
+          isEvalSupported: false
+        }).promise;
+        if (verifiedPdf.numPages !== sourcePdf.numPages) {
+          throw new Error(
+            'После сборки PDF изменилось количество страниц: ожидалось ' +
+            sourcePdf.numPages + ', получено ' + verifiedPdf.numPages + '.'
+          );
+        }
+        for (let pageNumber = 1; pageNumber <= verifiedPdf.numPages; pageNumber += 1) {
+          const checkPage = await verifiedPdf.getPage(pageNumber);
+          if (!checkPage || !checkPage.getViewport({ scale: 1 }).width ||
+              !checkPage.getViewport({ scale: 1 }).height) {
+            throw new Error('В собранном PDF обнаружена повреждённая страница ' + pageNumber + '.');
+          }
+          checkPage.cleanup();
+        }
+      } catch (error) {
+        if (error && /изменилось количество страниц|повреждённая страница/.test(error.message || '')) {
+          throw error;
+        }
+        throw new Error('Не удалось повторно открыть собранный PDF: ' + (error?.message || 'неизвестная ошибка'));
+      } finally {
+        if (verifiedPdf) {
+          try { await verifiedPdf.destroy(); } catch (_) {}
+        }
+      }
+
       return {
         blob,
         text: previewParts.join('\n\n') || 'Текст на страницах PDF не распознан.'
