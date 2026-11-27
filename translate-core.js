@@ -802,6 +802,23 @@
     };
   }
 
+
+
+  async function translateFb2Package(file) {
+    const xml = await readText(file);
+    const previewParts = [];
+    const updated = await translateXmlBlocks(
+      xml,
+      'p,subtitle,title',
+      'текст FB2',
+      previewParts
+    );
+    return {
+      blob: new Blob([updated], { type: 'application/x-fictionbook+xml;charset=utf-8' }),
+      text: previewParts.join('\n\n') || 'В FB2 не найден текст для перевода.'
+    };
+  }
+
   function sampleBackgroundColor(context, box, width, height) {
     const left = Math.max(0, Math.floor(box.x0));
     const right = Math.min(width - 1, Math.ceil(box.x1));
@@ -948,7 +965,7 @@
 
     if ($('resultNote')) {
       const ext = file ? extension(file) : '';
-      if (ext === 'docx' || ext === 'epub') {
+      if (ext === 'docx' || ext === 'epub' || ext === 'fb2') {
         $('resultNote').textContent =
           'Готовый файл сохраняет исходную структуру и ресурсы: изображения, обложку, таблицы и стили. Проверьте переносы и оформление отдельных фрагментов.';
       } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
@@ -1026,6 +1043,18 @@
       () => {
         const text = $('resultText')?.textContent || '';
 
+        if (translatedAssetBlob) {
+          const assetUrl = URL.createObjectURL(translatedAssetBlob);
+          const assetLink = document.createElement('a');
+          assetLink.href = assetUrl;
+          assetLink.download = translatedAssetName || 'mirror-info-translation';
+          document.body.appendChild(assetLink);
+          assetLink.click();
+          assetLink.remove();
+          setTimeout(() => URL.revokeObjectURL(assetUrl), 1500);
+          return;
+        }
+
         if (!text) return;
 
         const blob = new Blob(
@@ -1034,20 +1063,13 @@
         );
 
         const url = URL.createObjectURL(blob);
-
         const a = document.createElement('a');
-
         a.href = url;
         a.download = 'mirror-info-translation.txt';
-
         document.body.appendChild(a);
         a.click();
         a.remove();
-
-        setTimeout(
-          () => URL.revokeObjectURL(url),
-          1000
-        );
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
     );
   }
@@ -1242,6 +1264,11 @@
               result = packaged.text;
               asset = packaged.blob;
               setTranslatedAsset(asset, selectedFile, 'epub');
+            } else if (selectedFile && ext === 'fb2') {
+              const packaged = await translateFb2Package(selectedFile);
+              result = packaged.text;
+              asset = packaged.blob;
+              setTranslatedAsset(asset, selectedFile, 'fb2');
             } else if (selectedFile && ['jpg', 'jpeg', 'png'].includes(ext)) {
               const translatedImage = await translateImageFile(selectedFile);
               result = translatedImage.text;
