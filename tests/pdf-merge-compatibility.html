@@ -168,6 +168,53 @@
         if (subtype === 'Text') annotation.set(name('Name'), name('Comment'));
         page.node.addAnnot(context.register(annotation));
       }
+      function addPopupForTextAnnotation(document, page) {
+        const { PDFDict, PDFName, PDFArray, PDFNumber, PDFBool } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const annots = page.node.Annots();
+        if (!annots) throw new Error('Text annotation missing for popup fixture');
+        let parentRef = null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const ref = annots.get(index);
+          const annotation = context.lookup(ref);
+          const subtype = annotation.get(name('Subtype'));
+          if (subtype && subtype.toString() === '/Text') { parentRef = ref; break; }
+        }
+        if (!parentRef) throw new Error('Text annotation missing for popup fixture');
+        const popup = PDFDict.withContext(context);
+        const rect = PDFArray.withContext(context);
+        [270, 215, 420, 330].forEach(value => rect.push(PDFNumber.of(value)));
+        popup.set(name('Type'), name('Annot'));
+        popup.set(name('Subtype'), name('Popup'));
+        popup.set(name('Rect'), rect);
+        popup.set(name('Parent'), parentRef);
+        popup.set(name('Open'), PDFBool.of(false));
+        const popupRef = context.register(popup);
+        context.lookup(parentRef).set(name('Popup'), popupRef);
+        page.node.addAnnot(popupRef);
+      }
+      function hasLinkedPopup(document, page) {
+        const { PDFName } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return false;
+        let popupRef = null;
+        let parentRef = null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const ref = annots.get(index);
+          const annotation = document.context.lookup(ref);
+          const subtype = annotation.get(PDFName.of('Subtype'));
+          if (subtype && subtype.toString() === '/Popup') {
+            popupRef = ref;
+            parentRef = annotation.get(PDFName.of('Parent'));
+          }
+        }
+        if (!popupRef || !parentRef) return false;
+        const parent = document.context.lookup(parentRef);
+        const parentSubtype = parent.get(PDFName.of('Subtype'));
+        const backReference = parent.get(PDFName.of('Popup'));
+        return Boolean(parentSubtype && parentSubtype.toString() === '/Text' && backReference && backReference.toString() === popupRef.toString());
+      }
       function addNamedDestination(document, key, pageRef) {
         const { PDFDict, PDFName, PDFArray, PDFString } = window.PDFLib;
         const context = document.context;
@@ -323,6 +370,8 @@
           addMarkupAnnotation(first, first.getPages()[0], 'Underline', 'Batch A underline note');
           addMarkupAnnotation(first, first.getPages()[0], 'StrikeOut', 'Batch A strikeout note');
           addMarkupAnnotation(first, first.getPages()[0], 'Text', 'Batch A sticky note');
+          addPopupForTextAnnotation(first, first.getPages()[0]);
+          assert(hasLinkedPopup(first, first.getPages()[0]), 'Source A text note and popup have reciprocal references');
           const sourceAInspection = await inspect(await first.save());
           const sourceBInspection = await inspect(await second.save());
           report('Source A annotation inventory: ' + JSON.stringify(sourceAInspection.annotationSummary));
@@ -577,6 +626,7 @@
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Underline').includes('Batch A underline note'), 'Underline Contents survive in the merged raw annotation dictionary');
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'StrikeOut').includes('Batch A strikeout note'), 'StrikeOut Contents survive in the merged raw annotation dictionary');
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Text').includes('Batch A sticky note'), 'Text note Contents survive in the merged raw annotation dictionary');
+          assert(hasLinkedPopup(merged, merged.getPages()[0]), 'Text note popup and reciprocal parent references survive the merge');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
           assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
           assert(namedTargets.get('batch-b-chapter-start') === 2, 'Batch B named destination resolves to merged page 3');
