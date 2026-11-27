@@ -1772,9 +1772,68 @@
             attribute.value = leading + translated + trailing;
           }
         }
+
+        // EPUB 3 stores its table of contents in nav.xhtml. Translate only
+        // links inside nav[epub:type~="toc"], leaving href and navigation IDs intact.
+        for (const nav of Array.from(translatedDoc.getElementsByTagName('*')).filter(element =>
+          (element.localName || '').toLowerCase() === 'nav' &&
+          Array.from(element.attributes).some(attribute =>
+            (attribute.localName || attribute.name.split(':').pop()) === 'type' &&
+            String(attribute.value).split(/\\s+/).includes('toc')
+          )
+        )) {
+          const tocLinks = Array.from(nav.getElementsByTagName('*')).filter(element =>
+            (element.localName || '').toLowerCase() === 'a'
+          );
+          for (const link of tocLinks) {
+            const walker = translatedDoc.createTreeWalker(link, NodeFilter.SHOW_TEXT);
+            const textNodes = [];
+            let textNode;
+            while ((textNode = walker.nextNode())) {
+              if (textNode.textContent && textNode.textContent.trim()) textNodes.push(textNode);
+            }
+            if (!textNodes.length) continue;
+            const source = textNodes.map(node => node.textContent).join('');
+            const leading = source.match(/^\\s*/)?.[0] || '';
+            const trailing = source.match(/\\s*$/)?.[0] || '';
+            const translated = await translateInParts(source.trim());
+            previewParts.push(translated);
+            distributeTranslatedText(leading + translated + trailing, textNodes);
+          }
+        }
       }
 
       zip.file(entry.name, new XMLSerializer().serializeToString(translatedDoc));
+    }
+
+    // Translate reader-facing EPUB package metadata without changing creator
+    // names, identifiers, manifest paths, spine order, or resource references.
+    const dcNamespace = 'http://purl.org/dc/elements/1.1/';
+    const metadataEntries = zip.file(/\\.opf$/i).filter(entry => !entry.dir);
+    for (const entry of metadataEntries) {
+      const metadataDoc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
+      if (metadataDoc.querySelector('parsererror')) {
+        throw new Error('Не удалось прочитать метаданные EPUB: ' + entry.name);
+      }
+      const metadataTags = ['title', 'description', 'subject'];
+      for (const tagName of metadataTags) {
+        for (const element of Array.from(metadataDoc.getElementsByTagNameNS(dcNamespace, tagName))) {
+          const walker = metadataDoc.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+          const textNodes = [];
+          let textNode;
+          while ((textNode = walker.nextNode())) {
+            if (textNode.textContent && textNode.textContent.trim()) textNodes.push(textNode);
+          }
+          if (!textNodes.length) continue;
+          const source = textNodes.map(node => node.textContent).join('');
+          const leading = source.match(/^\\s*/)?.[0] || '';
+          const trailing = source.match(/\\s*$/)?.[0] || '';
+          const translated = await translateInParts(source.trim());
+          previewParts.push(translated);
+          distributeTranslatedText(leading + translated + trailing, textNodes);
+        }
+      }
+      zip.file(entry.name, new XMLSerializer().serializeToString(metadataDoc));
     }
 
     const blob = await zip.generateAsync({
