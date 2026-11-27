@@ -519,8 +519,9 @@
       const result = await worker.recognize(source);
       const language = $('srcLang')?.value || 'auto';
       const lines = collectOcrLines(result.data);
-      lastOcrLines = lines;
-      lastOcrLanguage = language;
+      // OCR returns its own result. Do not write into the shared image cache:
+      // an upload OCR that finishes late must not overwrite or repopulate
+      // the cache after the user has selected another file or cleared selection.
       return { text: result.data?.text || '', lines, language };
     });
     ocrQueue = task.then(() => undefined, () => undefined);
@@ -2630,9 +2631,11 @@
       lastOcrLines = [];
       lastOcrFile = null;
       const ocrResult = await ocrImage(file);
-      lastOcrLines = ocrResult.lines;
-      lastOcrLanguage = ocrResult.language;
-      lastOcrFile = file;
+      if (selectedFile === file) {
+        lastOcrLines = ocrResult.lines;
+        lastOcrLanguage = ocrResult.language;
+        lastOcrFile = file;
+      }
     }
 
     const lines = lastOcrLines.filter(line =>
