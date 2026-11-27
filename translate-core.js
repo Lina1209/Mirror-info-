@@ -1020,6 +1020,7 @@
     // Собираем признаки PDF-возможностей, которые не входят в пересобранный файл.
     // Предупреждения показываем пользователю, чтобы интерактивные данные не терялись молча.
     const pdfPreservationWarnings = [];
+    const pdfInspectionWarnings = [];
     try {
       if (typeof sourcePdf.getPageLabels === 'function') {
         const pageLabels = await sourcePdf.getPageLabels();
@@ -1030,7 +1031,7 @@
         }
       }
     } catch (_) {
-      // Метки страниц не обязательны для перевода.
+      pdfInspectionWarnings.push('Не удалось проверить пользовательскую нумерацию страниц PDF.');
     }
     try {
       if (typeof sourcePdf.getFieldObjects === 'function') {
@@ -1056,7 +1057,7 @@
         }
       }
     } catch (_) {
-      // Недоступность сведений о формах не должна останавливать перевод.
+      pdfInspectionWarnings.push('Не удалось полностью проверить поля и подписи PDF.');
     }
     try {
       if (typeof sourcePdf.getAttachments === 'function') {
@@ -1072,7 +1073,7 @@
         }
       }
     } catch (_) {
-      // Недоступность списка вложений не должна останавливать перевод.
+      pdfInspectionWarnings.push('Не удалось проверить наличие вложенных файлов PDF.');
     }
     try {
       if (typeof sourcePdf.getJavaScript === 'function') {
@@ -1085,7 +1086,7 @@
         }
       }
     } catch (_) {
-      // Недоступность списка сценариев не должна останавливать перевод.
+      pdfInspectionWarnings.push('Не удалось проверить наличие сценариев JavaScript в PDF.');
     }
 
     let outputPdf = null;
@@ -1174,7 +1175,7 @@
                 taggedStructureDetected = true;
               }
             } catch (_) {
-              // Недоступность дерева доступности не должна прерывать обработку страницы.
+              pdfInspectionWarnings.push('Не удалось полностью проверить структуру доступности PDF.');
             }
           }
           const baseViewport = page.getViewport({ scale: 1 });
@@ -1501,7 +1502,7 @@
           copiedOutlineItemCount = addedOutlineItems;
         }
       } catch (_) {
-        // Недоступные или повреждённые закладки не должны блокировать создание PDF.
+        pdfInspectionWarnings.push('Не удалось полностью прочитать или перенести оглавление PDF.');
       }
 
       // Переносим доступные описательные метаданные исходного PDF.
@@ -1524,7 +1525,7 @@
           outputPdf.setProperties(properties);
         }
       } catch (_) {
-        // Недоступные или повреждённые метаданные не должны блокировать перевод страниц.
+        pdfInspectionWarnings.push('Не удалось полностью прочитать метаданные исходного PDF.');
       }
 
       const blob = outputPdf.output('blob');
@@ -1621,6 +1622,9 @@
         pdfPreservationWarnings.push(
           'Исходный PDF содержит структурные теги доступности. Они не переносятся в новый файл; программа чтения с экрана может работать иначе.'
         );
+      }
+      if (pdfInspectionWarnings.length) {
+        pdfPreservationWarnings.push(...Array.from(new Set(pdfInspectionWarnings)));
       }
       if (annotationInspectionFailed) {
         pdfPreservationWarnings.push(
