@@ -1882,15 +1882,107 @@
 
 
 
+  function fb2StructureSignature(doc) {
+    return Array.from(doc.getElementsByTagName('*')).map(element => {
+      const attributes = Array.from(element.attributes || [])
+        .map(attribute => [
+          attribute.namespaceURI || '',
+          attribute.name,
+          attribute.value
+        ].join('='))
+        .sort()
+        .join('|');
+      return [
+        element.namespaceURI || '',
+        element.localName || element.nodeName,
+        attributes
+      ].join('::');
+    }).join('\n');
+  }
+
   async function translateFb2Package(file) {
+    if (file.size > 100 * 1024 * 1024) {
+      throw new Error('FB2 больше 100 МБ не поддерживается в одном проходе браузера.');
+    }
+
     const xml = await readText(file);
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    if (doc.querySelector('parsererror')) {
+      throw new Error('Файл FB2 повреждён или содержит некорректный XML.');
+    }
+
+    const root = doc.documentElement;
+    if (!root || root.localName !== 'FictionBook') {
+      throw new Error('XML не распознан как книга FB2: отсутствует корень FictionBook.');
+    }
+
+    const structureBefore = fb2StructureSignature(doc);
+    const binariesBefore = Array.from(doc.getElementsByTagName('*'))
+      .filter(element => element.localName === 'binary')
+      .map(element => ({
+        attributes: Array.from(element.attributes || [])
+          .map(attribute => [attribute.name, attribute.value]),
+        content: element.textContent
+      }));
+
+    const translatableNames = new Set([
+      'p', 'subtitle', 'title', 'v', 'date', 'annotation', 'epigraph', 'cite'
+    ]);
+    const allElements = Array.from(doc.getElementsByTagName('*'));
+    const blocks = allElements.filter(element => {
+      if (!translatableNames.has(element.localName)) return false;
+      if (element.closest('binary')) return false;
+      return !Array.from(element.getElementsByTagName('*'))
+        .some(child => translatableNames.has(child.localName));
+    });
+
     const previewParts = [];
-    const updated = await translateXmlBlocks(
-      xml,
-      'p,subtitle,title',
-      'текст FB2',
-      previewParts
-    );
+    for (let index = 0; index < blocks.length; index += 1) {
+      const walker = doc.createTreeWalker(blocks[index], NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.textContent && node.textContent.trim()) textNodes.push(node);
+      }
+
+      const source = textNodes.map(item => item.textContent).join('');
+      if (!source.trim()) continue;
+
+      const leading = source.match(/^\s*/)?.[0] || '';
+      const trailing = source.match(/\s*$/)?.[0] || '';
+      const translated = await translateInParts(source.trim());
+      previewParts.push(translated);
+      distributeTranslatedText(leading + translated + trailing, textNodes);
+
+      progress(
+        45 + (index + 1) / Math.max(1, blocks.length) * 45,
+        'Переводим FB2: блок ' + (index + 1) + ' из ' + blocks.length + '…'
+      );
+    }
+
+    const binariesAfter = Array.from(doc.getElementsByTagName('*'))
+      .filter(element => element.localName === 'binary')
+      .map(element => ({
+        attributes: Array.from(element.attributes || [])
+          .map(attribute => [attribute.name, attribute.value]),
+        content: element.textContent
+      }));
+
+    if (fb2StructureSignature(doc) !== structureBefore) {
+      throw new Error('Проверка FB2 выявила изменение структуры или ссылок. Исходный файл не будет выдан как готовый.');
+    }
+    if (JSON.stringify(binariesAfter) !== JSON.stringify(binariesBefore)) {
+      throw new Error('Проверка FB2 выявила изменение встроенных изображений. Исходный файл не будет выдан как готовый.');
+    }
+
+    const updated = new XMLSerializer().serializeToString(doc);
+    const verified = new DOMParser().parseFromString(updated, 'application/xml');
+    if (verified.querySelector('parsererror') ||
+        !verified.documentElement ||
+        verified.documentElement.localName !== 'FictionBook') {
+      throw new Error('Не удалось подтвердить целостность собранного FB2-файла.');
+    }
+
     return {
       blob: new Blob([updated], { type: 'application/x-fictionbook+xml;charset=utf-8' }),
       text: previewParts.join('\n\n') || 'В FB2 не найден текст для перевода.'
