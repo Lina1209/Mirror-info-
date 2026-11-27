@@ -997,6 +997,23 @@
 
     let outputPdf = null;
     const previewParts = [];
+    const MAX_PREVIEW_TEXT_CHARS = 500000;
+    let previewTextLength = 0;
+    let previewWasTruncated = false;
+    const appendPreviewText = value => {
+      if (previewTextLength >= MAX_PREVIEW_TEXT_CHARS) {
+        previewWasTruncated = true;
+        return;
+      }
+      const text = String(value || '');
+      const remaining = MAX_PREVIEW_TEXT_CHARS - previewTextLength;
+      const part = text.slice(0, remaining);
+      if (part) {
+        previewParts.push(part);
+        previewTextLength += part.length;
+      }
+      if (part.length < text.length) previewWasTruncated = true;
+    };
     const expectedPageGeometry = [];
     let copiedLinkAnnotationCount = 0;
     let copiedOutlineItemCount = 0;
@@ -1055,7 +1072,7 @@
           for (let index = 0; index < lines.length; index += 1) {
             const translated = await translateInParts(lines[index].text.trim());
             translatedLines.push(translated);
-            previewParts.push(translated);
+            appendPreviewText(translated);
 
             const pageProgress = lines.length
               ? (index + 1) / lines.length
@@ -1157,6 +1174,8 @@
             undefined,
             'FAST'
           );
+          // jsPDF consumes the image synchronously; release the temporary byte buffer now.
+          pageImageBytes.fill(0);
 
           if (unicodeFontData) {
             registerPdfUnicodeFont(outputPdf, unicodeFontData);
@@ -1436,7 +1455,8 @@
 
       return {
         blob,
-        text: previewParts.join('\n\n') || 'Текст на страницах PDF не распознан.'
+        text: (previewParts.join('\n\n') || 'Текст на страницах PDF не распознан.') +
+          (previewWasTruncated ? '\n\n[Предпросмотр сокращён для экономии памяти. Полный перевод сохранён в PDF.]' : '')
       };
     } finally {
       outputPdf = null;
