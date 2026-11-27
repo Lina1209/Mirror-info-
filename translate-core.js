@@ -1443,10 +1443,12 @@
           }
         }
       } catch (error) {
-        if (error && /изменилось количество страниц|повреждённая страница/.test(error.message || '')) {
+        // Не маскируем диагностические ошибки проверки геометрии, ссылок,
+        // метаданных и закладок общим сообщением об открытии PDF.
+        if (error && typeof error.message === 'string' && error.message.trim()) {
           throw error;
         }
-        throw new Error('Не удалось повторно открыть собранный PDF: ' + (error?.message || 'неизвестная ошибка'));
+        throw new Error('Не удалось повторно открыть собранный PDF для проверки целостности.');
       } finally {
         if (verifiedPdf) {
           try { await verifiedPdf.destroy(); } catch (_) {}
