@@ -1277,6 +1277,36 @@
       zip.file(embedded.name, await nestedZip.generateAsync({ type: 'uint8array' }));
     }
 
+    // Встроенные презентации PowerPoint: переводим текст слайдов,
+    // заметок, макетов, образцов и текстовые подписи диаграмм.
+    const embeddedPresentations = zip.file(/^word\/embeddings\/.*\.pptx$/i);
+    const presentationNs = 'http://schemas.openxmlformats.org/presentationml/2006/main';
+    for (const embedded of embeddedPresentations) {
+      const nestedZip = await JSZip.loadAsync(await embedded.async('uint8array'));
+      const presentationParts = nestedZip.file(/^ppt\/(slides\/slide\d+|notesSlides\/notesSlide\d+|slideLayouts\/slideLayout\d+|slideMasters\/slideMaster\d+|charts\/chart\d+|diagrams\/.*)\.xml$/i);
+      for (const nestedEntry of presentationParts) {
+        const doc = new DOMParser().parseFromString(await nestedEntry.async('text'), 'application/xml');
+        if (doc.querySelector('parsererror')) {
+          throw new Error('Не удалось прочитать встроенную презентацию: ' + nestedEntry.name);
+        }
+        await translateTextGroups(
+          Array.from(doc.getElementsByTagNameNS(drawingNs, 'p')),
+          drawingNs,
+          't'
+        );
+        await translateDescriptionAttributes(doc, [presentationNs, drawingNs]);
+        if (nestedEntry.name.startsWith('ppt/charts/')) {
+          const caches = [
+            ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strCache')),
+            ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strLit'))
+          ];
+          await translateTextGroups(caches, chartNs, 'v');
+        }
+        nestedZip.file(nestedEntry.name, new XMLSerializer().serializeToString(doc));
+      }
+      zip.file(embedded.name, await nestedZip.generateAsync({ type: 'uint8array' }));
+    }
+
     const blob = await zip.generateAsync({
       type: 'blob',
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
