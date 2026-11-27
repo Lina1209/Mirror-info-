@@ -855,7 +855,7 @@
         context.fillRect(0, 0, canvas.width, canvas.height);
         await page.render({ canvasContext: context, viewport }).promise;
 
-        const pageText = await ocrImage(canvas);
+        await ocrImage(canvas);
         const lines = lastOcrLines.slice();
         const translatedLines = [];
 
