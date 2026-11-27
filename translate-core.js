@@ -235,24 +235,30 @@
 
   function previewImage(file) {
     const target = $('photoPreview');
-
     if (!target) return;
 
-    const url = URL.createObjectURL(file);
-
+    const previousUrl = target.dataset.objectUrl;
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
     target.replaceChildren();
 
-    const img = document.createElement('img');
+    const url = URL.createObjectURL(file);
+    target.dataset.objectUrl = url;
 
+    const img = document.createElement('img');
     img.src = url;
     img.alt = 'Предпросмотр загруженного изображения';
-
     img.style.cssText =
       'max-width:100%;max-height:280px;' +
       'object-fit:contain;border-radius:14px;';
 
-    img.onload = () => URL.revokeObjectURL(url);
-
+    const releaseUrl = () => {
+      if (target.dataset.objectUrl === url) {
+        URL.revokeObjectURL(url);
+        delete target.dataset.objectUrl;
+      }
+    };
+    img.onload = releaseUrl;
+    img.onerror = releaseUrl;
     target.appendChild(img);
   }
 
@@ -1141,7 +1147,13 @@
       lastOcrLines = [];
       await ocrImage(file);
     }
-    const lines = lastOcrLines.filter(line => line.text && line.text.trim() && line.bbox);
+
+    const lines = lastOcrLines.filter(line =>
+      line.text && line.text.trim() && line.bbox &&
+      Number.isFinite(line.bbox.x0) && Number.isFinite(line.bbox.y0) &&
+      Number.isFinite(line.bbox.x1) && Number.isFinite(line.bbox.y1) &&
+      line.bbox.x1 > line.bbox.x0 && line.bbox.y1 > line.bbox.y0
+    );
     if (!lines.length) {
       throw new Error('Не удалось получить координаты текста на изображении. Попробуйте более чёткий JPG или PNG.');
     }
@@ -1157,72 +1169,89 @@
 
     const image = new Image();
     const objectUrl = URL.createObjectURL(file);
+    let canvas = null;
+
     try {
       await new Promise((resolve, reject) => {
         image.onload = resolve;
         image.onerror = () => reject(new Error('Не удалось открыть исходное изображение.'));
         image.src = objectUrl;
       });
-    } finally {
-      URL.revokeObjectURL(objectUrl);
-    }
 
-    if (image.naturalWidth * image.naturalHeight > 32000000) {
-      throw new Error('Изображение слишком большое для безопасной обработки в браузере. Уменьшите его размер и повторите попытку.');
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('Не удалось подготовить изображение для перевода.');
-    context.drawImage(image, 0, 0);
-
-    lines.forEach((line, index) => {
-      const box = line.bbox;
-      const x = Math.max(0, box.x0);
-      const y = Math.max(0, box.y0);
-      const width = Math.min(canvas.width - x, Math.max(1, box.x1 - box.x0));
-      const height = Math.min(canvas.height - y, Math.max(1, box.y1 - box.y0));
-
-      context.fillStyle = sampleBackgroundColor(context, box, canvas.width, canvas.height);
-      context.fillRect(Math.max(0, x - 2), Math.max(0, y - 1), width + 4, height + 2);
-
-      let fontSize = Math.max(8, Math.min(36, height * 0.76));
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.font = '600 ' + fontSize + 'px Arial, sans-serif';
-
-      while (
-        fontSize > 7 &&
-        context.measureText(translatedLines[index]).width > width + 2
-      ) {
-        fontSize -= 1;
-        context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+      if (!image.naturalWidth || !image.naturalHeight) {
+        throw new Error('Исходное изображение имеет некорректные размеры.');
+      }
+      if (image.naturalWidth * image.naturalHeight > 32000000) {
+        throw new Error('Изображение слишком большое для безопасной обработки в браузере. Уменьшите его размер и повторите попытку.');
       }
 
-      context.fillStyle = '#202020';
-      context.fillText(
-        translatedLines[index],
-        x + width / 2,
-        y + height / 2,
-        Math.max(1, width)
-      );
-    });
+      canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) throw new Error('Не удалось подготовить изображение для перевода.');
+      context.drawImage(image, 0, 0);
 
-    const ext = extension(file);
-    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
-    const outputExtension = mime === 'image/jpeg' ? 'jpg' : 'png';
-    const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob(
-        value => value ? resolve(value) : reject(new Error('Не удалось создать переведённое изображение.')),
-        mime,
-        0.94
-      );
-    });
+      lines.forEach((line, index) => {
+        const box = line.bbox;
+        const x = Math.max(0, Math.min(canvas.width - 1, box.x0));
+        const y = Math.max(0, Math.min(canvas.height - 1, box.y0));
+        const width = Math.max(1, Math.min(canvas.width - x, box.x1 - box.x0));
+        const height = Math.max(1, Math.min(canvas.height - y, box.y1 - box.y0));
 
-    setTranslatedAsset(blob, file, outputExtension);
-    return { blob, text: translatedLines.join('\n') };
+        context.fillStyle = sampleBackgroundColor(context, box, canvas.width, canvas.height);
+        context.fillRect(
+          Math.max(0, x - 2),
+          Math.max(0, y - 1),
+          Math.min(canvas.width - Math.max(0, x - 2), width + 4),
+          Math.min(canvas.height - Math.max(0, y - 1), height + 2)
+        );
+
+        let fontSize = Math.max(8, Math.min(36, height * 0.76));
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+
+        while (
+          fontSize > 7 &&
+          context.measureText(translatedLines[index]).width > width + 2
+        ) {
+          fontSize -= 1;
+          context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+        }
+
+        context.fillStyle = '#202020';
+        context.fillText(
+          translatedLines[index],
+          x + width / 2,
+          y + height / 2,
+          Math.max(1, width)
+        );
+      });
+
+      const ext = extension(file);
+      const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+      const outputExtension = mime === 'image/jpeg' ? 'jpg' : 'png';
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+          value => value ? resolve(value) : reject(new Error('Не удалось создать переведённое изображение.')),
+          mime,
+          0.94
+        );
+      });
+
+      setTranslatedAsset(blob, file, outputExtension);
+      return { blob, text: translatedLines.join('\\n') };
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+      image.onload = null;
+      image.onerror = null;
+      image.src = '';
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+    }
   }
 
   function showTranslatedAssetPreview(blob) {
