@@ -2105,7 +2105,7 @@
       const safeY = Math.max(0, Math.min(height - 1, y));
       try {
         const pixel = context.getImageData(safeX, safeY, 1, 1).data;
-        samples.push([pixel[0], pixel[1], pixel[2]]);
+        samples.push([pixel[0], pixel[1], pixel[2], pixel[3]]);
       } catch (_) {
         // Если браузер не может прочитать отдельный пиксель, пропускаем его.
       }
@@ -2123,7 +2123,7 @@
 
     if (!samples.length) return 'rgba(255,255,255,0.95)';
 
-    const median = [0, 1, 2].map(channel => {
+    const median = [0, 1, 2, 3].map(channel => {
       const values = samples.map(pixel => pixel[channel]).sort((a, b) => a - b);
       const middle = Math.floor(values.length / 2);
       return Math.round(values.length % 2
@@ -2131,7 +2131,10 @@
         : (values[middle - 1] + values[middle]) / 2);
     });
 
-    return 'rgba(' + median[0] + ',' + median[1] + ',' + median[2] + ',0.96)';
+    // Сохраняем прозрачность фона: непрозрачные области остаются
+    // непрозрачными, а прозрачные не превращаются в белые прямоугольники.
+    return 'rgba(' + median[0] + ',' + median[1] + ',' + median[2] + ',' +
+      (median[3] / 255) + ')';
   }
 
   async function translateImageFile(file) {
@@ -2196,13 +2199,16 @@
         const width = Math.max(1, Math.min(canvas.width - x, box.x1 - box.x0));
         const height = Math.max(1, Math.min(canvas.height - y, box.y1 - box.y0));
 
-        context.fillStyle = sampleBackgroundColor(context, box, canvas.width, canvas.height);
-        context.fillRect(
-          Math.max(0, x - 2),
-          Math.max(0, y - 1),
-          Math.min(canvas.width - Math.max(0, x - 2), width + 4),
-          Math.min(canvas.height - Math.max(0, y - 1), height + 2)
-        );
+        const patchX = Math.max(0, x - 2);
+        const patchY = Math.max(0, y - 1);
+        const patchWidth = Math.min(canvas.width - patchX, width + 4);
+        const patchHeight = Math.min(canvas.height - patchY, height + 2);
+        const backgroundColor = sampleBackgroundColor(context, box, canvas.width, canvas.height);
+        // Сначала очищаем область, затем восстанавливаем её медианным цветом
+        // и исходной альфой — иначе прозрачный PNG станет непрозрачным.
+        context.clearRect(patchX, patchY, patchWidth, patchHeight);
+        context.fillStyle = backgroundColor;
+        context.fillRect(patchX, patchY, patchWidth, patchHeight);
 
         let fontSize = Math.max(8, Math.min(36, height * 0.76));
         context.textAlign = 'center';
