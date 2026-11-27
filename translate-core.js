@@ -1490,7 +1490,7 @@
                 await findFirstOutlinePage(item.items, depth + 1);
               if (!pageNumber) continue;
 
-              const originalTitle = item.title.replace(/[\\u0000-\\u001F\\u007F]/g, ' ').trim().slice(0, 500);
+              const originalTitle = item.title.replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, 500);
               let translatedTitle = originalTitle;
               try {
                 const candidate = await translateInParts(originalTitle);
@@ -1532,7 +1532,7 @@
         const metadata = await sourcePdf.getMetadata();
         const info = metadata?.info || {};
         const cleanMetadata = value => typeof value === 'string'
-          ? value.replace(/[\\u0000-\\u001F\\u007F]/g, ' ').trim().slice(0, 4000)
+          ? value.replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, 4000)
           : '';
         const properties = {
           title: cleanMetadata(info.Title),
