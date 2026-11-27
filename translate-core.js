@@ -1020,6 +1020,7 @@
     const expectedPageGeometry = [];
     let copiedLinkAnnotationCount = 0;
     let copiedOutlineItemCount = 0;
+    let expectedTextLayerCharacters = 0;
     let expectedPdfMetadata = null;
     let totalRasterPixels = 0;
     const MAX_TOTAL_RASTER_PIXELS = 140000000;
@@ -1250,6 +1251,7 @@
                 baseline: 'middle'
               }
             );
+            expectedTextLayerCharacters += item.text.length;
           });
         } finally {
           if (canvas) {
@@ -1400,6 +1402,7 @@
           );
         }
         let rebuiltLinkAnnotationCount = 0;
+        let rebuiltTextLayerCharacters = 0;
         for (let pageNumber = 1; pageNumber <= verifiedPdf.numPages; pageNumber += 1) {
           const checkPage = await verifiedPdf.getPage(pageNumber);
           if (!checkPage) {
@@ -1416,10 +1419,19 @@
           rebuiltLinkAnnotationCount += Array.isArray(rebuiltAnnotations)
             ? rebuiltAnnotations.filter(annotation => annotation?.subtype === 'Link').length
             : 0;
+          if (unicodeFontData) {
+            const rebuiltText = await checkPage.getTextContent();
+            rebuiltTextLayerCharacters += (rebuiltText.items || [])
+              .reduce((total, item) => total + String(item.str || '').length, 0);
+          }
           checkPage.cleanup();
         }
         if (rebuiltLinkAnnotationCount < copiedLinkAnnotationCount) {
           throw new Error('После сборки PDF потерялись некоторые перенесённые ссылки.');
+        }
+        if (unicodeFontData && expectedTextLayerCharacters > 0 &&
+            rebuiltTextLayerCharacters < Math.floor(expectedTextLayerCharacters * 0.5)) {
+          throw new Error('После сборки PDF не удалось подтвердить сохранность текстового слоя. Проверьте шрифт или повторите перевод.');
         }
         if (expectedPdfMetadata) {
           const rebuiltMetadata = await verifiedPdf.getMetadata();
