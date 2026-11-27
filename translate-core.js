@@ -2031,7 +2031,7 @@
       }
     }
 
-    for (const partName of originalProtectedParts.map(entry => entry.name)) {
+    for (const partName of originalProtectedParts.keys()) {
       const verifiedEntry = verifiedZip.file(partName);
       if (!verifiedEntry) {
         throw new Error('В собранном DOCX отсутствует защищённый ресурс: ' + partName);
