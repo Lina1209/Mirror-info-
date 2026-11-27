@@ -1040,19 +1040,20 @@
             context.textBaseline = 'middle';
 
             while (
-              fontSize > 5 &&
+              fontSize > 3.5 &&
               context.measureText(translatedLines[index]).width > width + 2
             ) {
-              fontSize -= 1;
+              fontSize = Math.max(3.5, fontSize - 0.5);
               context.font = '600 ' + fontSize + 'px Arial, sans-serif';
             }
 
             context.fillStyle = readableTextColor(backgroundColor);
+            // Не сжимаем длинную строку по горизонтали: подбираем размер шрифта,
+            // сохраняя пропорции букв и читаемость перевода.
             context.fillText(
               translatedLines[index],
               x,
-              y + height / 2,
-              Math.max(1, width)
+              y + height / 2
             );
             textOverlay.push({
               text: translatedLines[index],
