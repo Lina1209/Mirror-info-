@@ -1153,25 +1153,33 @@
     if (!pane || !blob) return;
 
     let preview = $('resultAssetPreview');
-    if (!preview) {
-      preview = document.createElement('img');
-      preview.id = 'resultAssetPreview';
-      preview.alt = 'Предпросмотр переведённого файла';
+    if (preview?.dataset.objectUrl) {
+      URL.revokeObjectURL(preview.dataset.objectUrl);
+      preview.remove();
+      preview = null;
+    }
+
+    const isPdf = blob.type === 'application/pdf';
+    preview = document.createElement(isPdf ? 'iframe' : 'img');
+    preview.id = 'resultAssetPreview';
+
+    if (isPdf) {
+      preview.title = 'Предпросмотр переведённого PDF';
+      preview.style.cssText =
+        'display:block;width:100%;height:70vh;min-height:420px;' +
+        'border:0;border-radius:12px;margin:0 0 16px;';
+    } else {
+      preview.alt = 'Предпросмотр переведённого изображения';
       preview.style.cssText =
         'display:block;max-width:100%;max-height:560px;' +
         'object-fit:contain;margin:0 auto 16px;border-radius:12px;';
-      pane.prepend(preview);
-    }
-
-    if (preview.dataset.objectUrl) {
-      URL.revokeObjectURL(preview.dataset.objectUrl);
     }
 
     const url = URL.createObjectURL(blob);
     preview.src = url;
     preview.dataset.objectUrl = url;
+    pane.prepend(preview);
   }
-
 
 
 
