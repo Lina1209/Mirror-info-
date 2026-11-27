@@ -1395,7 +1395,8 @@
           await translateTextGroups(paragraphs, drawingNs, 't');
           const caches = [
             ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strCache')),
-            ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strLit'))
+            ...Array.from(doc.getElementsByTagNameNS(chartNs, 'strLit')),
+            ...Array.from(doc.getElementsByTagNameNS(chartNs, 'multiLvlStrCache'))
           ];
           await translateTextGroups(caches, chartNs, 'v');
         } else {
