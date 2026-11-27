@@ -867,6 +867,15 @@
             const translated = await translateInParts(lines[index].text.trim());
             translatedLines.push(translated);
             previewParts.push(translated);
+
+            const pageProgress = lines.length
+              ? (index + 1) / lines.length
+              : 1;
+            progress(
+              5 + ((pageNumber - 1) + pageProgress) / sourcePdf.numPages * 85,
+              'Переводим страницу ' + pageNumber + ': строка ' +
+              (index + 1) + ' из ' + lines.length
+            );
           }
 
           lines.forEach((line, index) => {
@@ -1059,20 +1068,42 @@
     const top = Math.max(0, Math.floor(box.y0));
     const bottom = Math.min(height - 1, Math.ceil(box.y1));
     const samples = [];
-    const step = Math.max(2, Math.floor((right - left) / 8));
+    const horizontalStep = Math.max(2, Math.floor((right - left) / 12));
+    const verticalStep = Math.max(2, Math.floor((bottom - top) / 8));
 
-    for (let x = left; x <= right; x += step) {
-      for (const y of [Math.max(0, top - 2), Math.min(height - 1, bottom + 2)]) {
+    // Берём точки по четырём сторонам рамки; медиана меньше зависит
+    // от отдельных тёмных пикселей, линий и случайных деталей фона.
+    for (let x = left; x <= right; x += horizontalStep) {
+      for (const y of [
+        Math.max(0, top - 3),
+        Math.min(height - 1, bottom + 3)
+      ]) {
+        const pixel = context.getImageData(x, y, 1, 1).data;
+        samples.push([pixel[0], pixel[1], pixel[2]]);
+      }
+    }
+
+    for (let y = top; y <= bottom; y += verticalStep) {
+      for (const x of [
+        Math.max(0, left - 3),
+        Math.min(width - 1, right + 3)
+      ]) {
         const pixel = context.getImageData(x, y, 1, 1).data;
         samples.push([pixel[0], pixel[1], pixel[2]]);
       }
     }
 
     if (!samples.length) return 'rgba(255,255,255,0.95)';
-    const average = [0, 1, 2].map(channel =>
-      Math.round(samples.reduce((sum, pixel) => sum + pixel[channel], 0) / samples.length)
-    );
-    return 'rgba(' + average[0] + ',' + average[1] + ',' + average[2] + ',0.96)';
+
+    const median = [0, 1, 2].map(channel => {
+      const values = samples.map(pixel => pixel[channel]).sort((a, b) => a - b);
+      const middle = Math.floor(values.length / 2);
+      return Math.round(values.length % 2
+        ? values[middle]
+        : (values[middle - 1] + values[middle]) / 2);
+    });
+
+    return 'rgba(' + median[0] + ',' + median[1] + ',' + median[2] + ',0.96)';
   }
 
   async function translateImageFile(file) {
