@@ -259,3 +259,8 @@ Scope remains narrow: this verifies one synthetic Highlight geometry/color fixtu
 Chromium browser compatibility run 45979912157 completed successfully for commit 881800c. Raw PDF dictionary assertions confirm that a synthetic Highlight annotation retains its author string ("Lina Test Author"), modification date ("D:20261127100000Z"), and opacity value (0.65) after the two-batch merge. The fixture values are also independently checked before merging.
 
 This is a focused synthetic Highlight test. It does not establish preservation of annotation appearance streams, blend modes, popup/reply relationships, arbitrary annotation subtypes, or rendering equivalence across PDF viewers. No claims are made for arbitrary real-world PDFs.
+
+
+## Popup fixture API correction (run 45980099749)
+
+The first Chromium run for the synthetic Text/Popup relationship check failed before reaching the merge assertions: the fixture called `PDFBool.of(false)`, but pdf-lib 1.17.1 exposes boolean singletons rather than that factory method. This was a test-fixture API error, not evidence that Popup references were lost. The fixture now uses `PDFBool.False` (commit e652cc7). The Popup preservation assertion remains unverified until a fresh browser run completes.
