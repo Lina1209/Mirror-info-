@@ -1181,33 +1181,67 @@
     }
 
     const previewParts = [];
+    const wordNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const drawingNs = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+    const sheetNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+
+    async function translateTextGroups(groups, namespace, tagName) {
+      for (const group of groups) {
+        const nodes = Array.from(group.getElementsByTagNameNS(namespace, tagName));
+        if (!nodes.length) continue;
+        const source = nodes.map(node => node.textContent || '').join('');
+        if (!source.trim()) continue;
+        const leading = source.match(/^\s*/)?.[0] || '';
+        const trailing = source.match(/\s*$/)?.[0] || '';
+        const translated = await translateInParts(source.trim());
+        previewParts.push(translated);
+        distributeTranslatedText(leading + translated + trailing, nodes);
+      }
+    }
+
     for (const entry of entries) {
       const doc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
       if (doc.querySelector('parsererror')) {
         throw new Error('Не удалось прочитать часть DOCX: ' + entry.name);
       }
 
-      const paragraphs = Array.from(doc.getElementsByTagNameNS(
-        'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-        'p'
-      ));
-
-      for (let index = 0; index < paragraphs.length; index += 1) {
-        const textNodes = Array.from(paragraphs[index].getElementsByTagNameNS(
-          'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-          't'
-        ));
-        const source = textNodes.map(node => node.textContent || '').join('');
-        if (!source.trim()) continue;
-
-        const leading = source.match(/^\s*/)?.[0] || '';
-        const trailing = source.match(/\s*$/)?.[0] || '';
-        const translated = await translateInParts(source.trim());
-        previewParts.push(translated);
-        distributeTranslatedText(leading + translated + trailing, textNodes);
-      }
-
+      // Абзацы включают текст в ячейках таблиц, колонтитулах,
+      // сносках, примечаниях и комментариях; разметка Word сохраняется.
+      const paragraphs = Array.from(doc.getElementsByTagNameNS(wordNs, 'p'));
+      await translateTextGroups(paragraphs, wordNs, 't');
       zip.file(entry.name, new XMLSerializer().serializeToString(doc));
+    }
+
+    // Отдельные части DrawingML: подписи диаграмм, SmartArt и текст фигур.
+    const drawingEntries = zip.file(/^word\/(charts|diagrams|drawings)\/.*\.xml$/i);
+    for (const entry of drawingEntries) {
+      const doc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
+      if (doc.querySelector('parsererror')) {
+        throw new Error('Не удалось прочитать диаграмму или схему: ' + entry.name);
+      }
+      const paragraphs = Array.from(doc.getElementsByTagNameNS(drawingNs, 'p'));
+      await translateTextGroups(paragraphs, drawingNs, 't');
+      zip.file(entry.name, new XMLSerializer().serializeToString(doc));
+    }
+
+    // Встроенные книги Excel: переводим текстовые значения и подписи,
+    // не изменяя формулы и числовые данные.
+    const embeddedBooks = zip.file(/^word\/embeddings\/.*\.xlsx$/i);
+    for (const embedded of embeddedBooks) {
+      const nestedZip = await JSZip.loadAsync(await embedded.async('uint8array'));
+      const textFiles = nestedZip.file(/^xl\/(sharedStrings|worksheets\/sheet\d+)\.xml$/i);
+      for (const nestedEntry of textFiles) {
+        const doc = new DOMParser().parseFromString(await nestedEntry.async('text'), 'application/xml');
+        if (doc.querySelector('parsererror')) {
+          throw new Error('Не удалось прочитать встроенную таблицу Excel: ' + nestedEntry.name);
+        }
+        const groups = nestedEntry.name.includes('sharedStrings')
+          ? Array.from(doc.getElementsByTagNameNS(sheetNs, 'si'))
+          : Array.from(doc.getElementsByTagNameNS(sheetNs, 'is'));
+        await translateTextGroups(groups, sheetNs, 't');
+        nestedZip.file(nestedEntry.name, new XMLSerializer().serializeToString(doc));
+      }
+      zip.file(embedded.name, await nestedZip.generateAsync({ type: 'uint8array' }));
     }
 
     const blob = await zip.generateAsync({
