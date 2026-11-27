@@ -403,12 +403,58 @@
     return sections.join('\n\n');
   }
 
+
+
+  function collectOcrLines(data) {
+    let lines = Array.isArray(data?.lines) ? data.lines : [];
+
+    if (!lines.length && Array.isArray(data?.blocks)) {
+      lines = data.blocks.flatMap(block =>
+        (block.paragraphs || []).flatMap(paragraph => paragraph.lines || [])
+      );
+    }
+
+    if (!lines.length && Array.isArray(data?.words)) {
+      const grouped = new Map();
+      data.words.forEach(word => {
+        if (!word.text || !word.bbox) return;
+        const key = [
+          word.block_num || 0,
+          word.par_num || 0,
+          word.line_num || 0
+        ].join(':');
+        const current = grouped.get(key) || {
+          text: '',
+          bbox: {
+            x0: word.bbox.x0,
+            y0: word.bbox.y0,
+            x1: word.bbox.x1,
+            y1: word.bbox.y1
+          }
+        };
+        current.text = (current.text ? current.text + ' ' : '') + word.text;
+        current.bbox.x0 = Math.min(current.bbox.x0, word.bbox.x0);
+        current.bbox.y0 = Math.min(current.bbox.y0, word.bbox.y0);
+        current.bbox.x1 = Math.max(current.bbox.x1, word.bbox.x1);
+        current.bbox.y1 = Math.max(current.bbox.y1, word.bbox.y1);
+        grouped.set(key, current);
+      });
+      lines = Array.from(grouped.values());
+    }
+
+    return lines.filter(line =>
+      line.text && line.text.trim() && line.bbox &&
+      Number.isFinite(line.bbox.x0) && Number.isFinite(line.bbox.y0) &&
+      Number.isFinite(line.bbox.x1) && Number.isFinite(line.bbox.y1)
+    );
+  }
+
   // OCR изображений
   async function ocrImage(source) {
     const worker = await ensureTesseract();
 
     const result = await worker.recognize(source);
-    lastOcrLines = (result.data?.lines || []).filter(line => line.text && line.text.trim() && line.bbox);
+    lastOcrLines = collectOcrLines(result.data);
     lastOcrLanguage = $('srcLang')?.value || 'auto';
 
     return result.data?.text || '';
