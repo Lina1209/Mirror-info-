@@ -21,6 +21,7 @@
   let ocrWorkerPromise = null;
   let ocrWorkerLanguage = '';
   let lastOcrLanguage = '';
+  let lastOcrFile = null;
   let pdfUnicodeFontPromise = null;
   let lastPdfTextLayerStatus = 'not-started';
 
@@ -2135,9 +2136,13 @@
 
   async function translateImageFile(file) {
     const currentOcrLanguage = $('srcLang')?.value || 'auto';
-    if (lastOcrLanguage !== currentOcrLanguage) {
+    // OCR-координаты относятся к конкретному файлу: нельзя переиспользовать
+    // распознанные строки предыдущей картинки только потому, что язык тот же.
+    if (lastOcrFile !== file || lastOcrLanguage !== currentOcrLanguage || !lastOcrLines.length) {
       lastOcrLines = [];
+      lastOcrFile = null;
       await ocrImage(file);
+      lastOcrFile = file;
     }
 
     const lines = lastOcrLines.filter(line =>
