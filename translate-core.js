@@ -1020,23 +1020,34 @@
             const height = Math.max(1, Math.min(canvas.height - y, Math.ceil(box.y1 - box.y0)));
             if (x >= canvas.width || y >= canvas.height) return;
 
-            context.fillStyle = sampleBackgroundColor(context, box, canvas.width, canvas.height);
-            context.fillRect(Math.max(0, x - 2), Math.max(0, y - 1), width + 4, height + 2);
+            const backgroundColor = sampleBackgroundColor(
+              context,
+              box,
+              canvas.width,
+              canvas.height
+            );
+            context.fillStyle = backgroundColor;
+            context.fillRect(
+              Math.max(0, x - 2),
+              Math.max(0, y - 1),
+              Math.min(canvas.width - Math.max(0, x - 2), width + 4),
+              Math.min(canvas.height - Math.max(0, y - 1), height + 2)
+            );
 
-            let fontSize = Math.max(7, Math.min(30, height * 0.78));
+            let fontSize = Math.max(5, Math.min(30, height * 0.78));
             context.font = '600 ' + fontSize + 'px Arial, sans-serif';
             context.textAlign = 'left';
             context.textBaseline = 'middle';
 
             while (
-              fontSize > 6 &&
+              fontSize > 5 &&
               context.measureText(translatedLines[index]).width > width + 2
             ) {
               fontSize -= 1;
               context.font = '600 ' + fontSize + 'px Arial, sans-serif';
             }
 
-            context.fillStyle = '#202020';
+            context.fillStyle = readableTextColor(backgroundColor);
             context.fillText(
               translatedLines[index],
               x,
@@ -1253,6 +1264,24 @@
       blob: new Blob([updated], { type: 'application/x-fictionbook+xml;charset=utf-8' }),
       text: previewParts.join('\n\n') || 'В FB2 не найден текст для перевода.'
     };
+  }
+
+  function readableTextColor(backgroundColor) {
+    const values = String(backgroundColor || '').match(/[\\d.]+/g);
+    if (!values || values.length < 3) return '#202020';
+
+    const channels = values.slice(0, 3).map(value => {
+      const channel = Math.max(0, Math.min(255, Number(value))) / 255;
+      return channel <= 0.04045
+        ? channel / 12.92
+        : Math.pow((channel + 0.055) / 1.055, 2.4);
+    });
+    const luminance =
+      0.2126 * channels[0] +
+      0.7152 * channels[1] +
+      0.0722 * channels[2];
+
+    return luminance > 0.42 ? '#202020' : '#ffffff';
   }
 
   function sampleBackgroundColor(context, box, width, height) {
