@@ -1,6 +1,17 @@
+import { verifyAccess } from './orders.js';
+
 export async function onRequestGet({ request, env }) {
-  if (!request.headers.get('Cf-Access-Jwt-Assertion')) {
-    return new Response('Требуется авторизация', { status: 401 });
+  const authError = await verifyAccess(request, env);
+  if (authError) {
+    return Response.json({
+      ok: false,
+      error: 'Требуется авторизация.',
+      code: authError
+    }, { status: 401 });
+  }
+
+  if (request.headers.get('Origin') && request.headers.get('Origin') !== new URL(request.url).origin) {
+    return Response.json({ ok: false, error: 'Запрос отклонён.' }, { status: 403 });
   }
 
   if (!env.TELEGRAM_BOT_TOKEN) {
