@@ -227,9 +227,11 @@
           page.cleanup();
         }
         let formFieldCount = 0;
+        let formFieldInventory = [];
         try {
           const fields = await pdf.getFieldObjects();
           formFieldCount = fields ? Object.values(fields).reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0) : 0;
+          formFieldInventory = fields ? Object.entries(fields).flatMap(([name, items]) => (items || []).map(field => ({ name, value: field.value ?? null }))) : [];
         } catch (_) {}
         const outline = await pdf.getOutline();
         const outlineTargets = [];
@@ -256,7 +258,7 @@
         }
         const metadata = await pdf.getMetadata();
         await pdf.destroy();
-        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, outlineTargets, namedDestinationTargets, formFieldCount, highlightContents, annotationSummary, title: metadata.info && metadata.info.Title };
+        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, outlineTargets, namedDestinationTargets, formFieldCount, formFieldInventory, highlightContents, annotationSummary, title: metadata.info && metadata.info.Title };
       }
       button.addEventListener('click', async function () {
         lines.length = 0;
@@ -428,6 +430,32 @@
           assert(result.title === 'Mirror Info merged compatibility test', 'Merged PDF metadata can be written and read back');
           report('AcroForm field count after copyPages merge: ' + result.formFieldCount);
           assert(result.formFieldCount === 0, 'Known limitation is explicit: copyPages does not preserve the document-level AcroForm field tree');
+          const sourceTextFields = sourceForm.getFields().filter(field => typeof field.getText === 'function');
+          assert(sourceTextFields.length === 1, 'Synthetic source contains one supported text field for reconstruction');
+          const sourceTextField = sourceTextFields[0];
+          const sourceWidgets = sourceTextField.acroField.getWidgets();
+          assert(sourceWidgets.length === 1, 'Synthetic source text field has one widget');
+          const sourceWidget = sourceWidgets[0];
+          const sourceWidgetPageRef = sourceWidget.getP();
+          const sourceWidgetPageIndex = first.getPages().findIndex(page => sourceWidgetPageRef && page.ref.toString() === sourceWidgetPageRef.toString());
+          assert(sourceWidgetPageIndex === 0, 'Source widget points to the expected first page');
+          const sourceWidgetRect = sourceWidget.getRectangle();
+          report('Source text field geometry: ' + JSON.stringify(sourceWidgetRect));
+          const reconstructedForm = merged.getForm();
+          const reconstructedField = reconstructedForm.createTextField('batchA.' + sourceTextField.getName());
+          const sourceFieldValue = sourceTextField.getText();
+          if (sourceFieldValue !== undefined && sourceFieldValue !== null) reconstructedField.setText(sourceFieldValue);
+          reconstructedField.addToPage(merged.getPage(sourceWidgetPageIndex), {
+            x: sourceWidgetRect.x,
+            y: sourceWidgetRect.y,
+            width: sourceWidgetRect.width,
+            height: sourceWidgetRect.height
+          });
+          const reconstructedOutput = await merged.save({ useObjectStreams: true });
+          const reconstructedInspection = await inspect(reconstructedOutput);
+          report('Reconstructed AcroForm inventory: ' + JSON.stringify(reconstructedInspection.formFieldInventory));
+          assert(reconstructedInspection.formFieldCount === 1, 'Reconstructed text field is present in the merged AcroForm field tree');
+          assert(reconstructedInspection.formFieldInventory.some(field => field.name === 'batchA.batchA.sampleField' && field.value === 'Form value for merge test'), 'Reconstructed text field retains its namespaced name and value');
           report('Merged annotation inventory: ' + JSON.stringify(result.annotationSummary));
           report('Detected highlight contents: ' + JSON.stringify(result.highlightContents));
           assert(result.annotationSummary.filter(item => item.subtype === 'Highlight').length === 2, 'Both text highlight annotation objects survive the merge');
