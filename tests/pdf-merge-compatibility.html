@@ -26,7 +26,7 @@
       const log = document.getElementById('log');
       const button = document.getElementById('run');
       const lines = [];
-      function report(message) { lines.push(message); log.textContent = lines.join('\\n'); }
+      function report(message) { lines.push(message); log.textContent = lines.join('\n'); }
       function assert(condition, message) {
         if (!condition) throw new Error('FAIL: ' + message);
         report('PASS: ' + message);
@@ -53,6 +53,7 @@
         let resolvedInternalLinks = 0;
         let brokenInternalLinks = 0;
         const externalUrls = [];
+        const internalTargets = [];
         for (let i = 1; i <= pdf.numPages; i += 1) {
           const page = await pdf.getPage(i);
           const viewport = page.getViewport({ scale: 1 });
@@ -70,7 +71,8 @@
                   ? await pdf.getDestination(annotation.dest)
                   : annotation.dest;
                 if (!Array.isArray(destination) || !destination[0]) throw new Error('Missing destination page reference');
-                await pdf.getPageIndex(destination[0]);
+                const targetPageIndex = await pdf.getPageIndex(destination[0]);
+                internalTargets.push({ sourcePageIndex: i - 1, targetPageIndex });
                 resolvedInternalLinks += 1;
               } catch (_) {
                 brokenInternalLinks += 1;
@@ -81,15 +83,15 @@
         }
         const metadata = await pdf.getMetadata();
         await pdf.destroy();
-        return { pages, externalLinks, externalUrls, internalLinks, resolvedInternalLinks, brokenInternalLinks, title: metadata.info && metadata.info.Title };
+        return { pages, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, title: metadata.info && metadata.info.Title };
       }
       button.addEventListener('click', async function () {
         lines.length = 0;
         button.disabled = true;
         try {
           assert(!!window.jspdf && !!window.PDFLib && !!window.pdfjsLib, 'Pinned test libraries loaded (jsPDF 2.5.2, pdf-lib 1.17.1, PDF.js 3.11.174)');
-          const first = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH A', 'Mirror Info batch A'));
-          const second = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH B', 'Mirror Info batch B'));
+          const first = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-A', 'Mirror Info batch A'));
+          const second = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-B', 'Mirror Info batch B'));
           const merged = await window.PDFLib.PDFDocument.create();
           merged.setTitle('Mirror Info merged compatibility test');
           merged.setAuthor('Mirror Info');
@@ -104,13 +106,16 @@
           assert(result.pages[1].width > result.pages[1].height, 'Landscape page geometry is preserved');
           assert(result.externalLinks >= 2, 'External URI link annotations survive from both batches');
           assert(result.internalLinks >= 2, 'Internal link annotations remain present in the merged output');
-          assert(result.resolvedInternalLinks >= 2 && result.brokenInternalLinks === 0, 'Every internal link resolves to a page in the merged document');
-          assert(result.externalUrls.includes('https://example.com/batch%20a') && result.externalUrls.includes('https://example.com/batch%20b'), 'Both batch external link targets are retained');
+          assert(result.resolvedInternalLinks === 2 && result.brokenInternalLinks === 0, 'Both internal links resolve without broken destinations');
+          const targetBySource = new Map(result.internalTargets.map(link => [link.sourcePageIndex, link.targetPageIndex]));
+          assert(targetBySource.get(0) === 1 && targetBySource.get(2) === 3, 'Internal links point to the correct page within each merged batch (page 2 and page 4)');
+          assert(result.externalUrls.includes('https://example.com/batch-a') && result.externalUrls.includes('https://example.com/batch-b'), 'Both batch external link targets are retained');
           assert(result.title === 'Mirror Info merged compatibility test', 'Merged PDF metadata can be written and read back');
           report('RESULT: PASS — merged PDF reopened successfully with PDF.js.');
           report('Page geometry: ' + JSON.stringify(result.pages));
           report('Link counts: external=' + result.externalLinks + ', internal=' + result.internalLinks + ', resolved=' + result.resolvedInternalLinks + ', broken=' + result.brokenInternalLinks);
-          report('NOTE: This is a small browser compatibility check only. It does not establish bounded memory, cross-batch destination correctness, bookmarks, forms, signatures, or Cloudflare runtime suitability.');
+          report('Internal targets (zero-based): ' + JSON.stringify(result.internalTargets));
+          report('NOTE: This is a small browser compatibility check only. It does not establish bounded memory, bookmarks, forms, signatures, or Cloudflare runtime suitability.');
           const blob = new Blob([output], { type: 'application/pdf' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
