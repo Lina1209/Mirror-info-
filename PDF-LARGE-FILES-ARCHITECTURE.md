@@ -154,8 +154,13 @@ The same run also passed the existing four-page, geometry, rotation, text extrac
 **Scope warning:** this verifies only the synthetic outline shape created by the harness and the tested page-destination mapping. It does not establish preservation of arbitrary source outline dictionaries or all real-world PDF bookmark variants. Named destinations, remote/URI actions, open-state flags, styles/colors, malformed outline trees, unusual Unicode titles, forms, signatures, attachments, and tagged structure remain unverified. The test reconstructs a simple outline hierarchy; it is not evidence of full PDF feature preservation or production merge readiness.
 
 
-## Named-destination merge fixture (pending automated verification)
+## Verified named-destination merge fixture
 
 The next browser fixture adds a PDF catalog name tree containing a named page destination to each source batch. The same key is intentionally used in both inputs to exercise collision handling: the merge prototype prefixes imported names with `batch-a-` and `batch-b-`, remaps each destination's page reference, and then asks PDF.js to resolve both names in the merged output. Expected destinations are merged page 1 and merged page 3.
 
-The fixture is committed in `tests/pdf-merge-compatibility.html` (commits `a84fff7` and `c74665c`). GitHub Actions run `45977104047` is the current Chromium verification run; do not count named-destination preservation as verified until it completes successfully. This fixture currently validates catalog name-tree lookup, not every possible named destination encoding or annotation action form.
+The fixture is committed in `tests/pdf-merge-compatibility.html` (commits `a84fff7` and `c74665c`). GitHub Actions run `45977104047` completed successfully in Chromium on 2026-11-27. PDF.js resolved the colliding source keys after namespacing: `batch-a-chapter-start` → merged page 1 and `batch-b-chapter-start` → merged page 3. The fixture validates this catalog name-tree shape, not every possible named destination encoding or annotation action form.
+
+
+## Next PDF compatibility boundary: AcroForms
+
+The current merge harness uses `PDFDocument.copyPages`. It verifies page-level annotations and navigation structures, but it does not yet establish that document-level AcroForm field dictionaries, field names, widget appearances, calculation order, or form actions survive. Treat interactive form preservation as unsupported/unverified until a dedicated source-PDF form fixture and post-merge field/value/appearance assertions pass. A copied widget annotation alone is not proof that the AcroForm catalog and field tree are intact.
