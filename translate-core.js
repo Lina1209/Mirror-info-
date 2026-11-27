@@ -1741,6 +1741,49 @@
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     });
 
+    // Повторно открываем уже собранный архив: проверка до упаковки не
+    // гарантирует, что ZIP корректно сериализовался и читается после сборки.
+    const verifiedZip = await JSZip.loadAsync(await blob.arrayBuffer());
+    validatePackageLimits(verifiedZip, 'Собранный DOCX');
+    const verifiedPartNames = Object.keys(verifiedZip.files).filter(name => !verifiedZip.files[name].dir);
+    if (
+      verifiedPartNames.length !== originalPartNames.length ||
+      originalPartNames.some(name => !verifiedZip.file(name)) ||
+      verifiedPartNames.some(name => !originalPartNames.includes(name))
+    ) {
+      throw new Error('Проверка собранного DOCX выявила изменение состава ZIP-пакета.');
+    }
+
+    for (const relationshipName of originalRelationships.keys()) {
+      const relationshipEntry = verifiedZip.file(relationshipName);
+      if (!relationshipEntry) {
+        throw new Error('В собранном DOCX отсутствуют связи: ' + relationshipName);
+      }
+      const relationshipBytes = await relationshipEntry.async('uint8array');
+      const originalBytes = originalRelationships.get(relationshipName);
+      if (
+        relationshipBytes.length !== originalBytes.length ||
+        relationshipBytes.some((byte, index) => byte !== originalBytes[index])
+      ) {
+        throw new Error('Проверка собранного DOCX выявила изменение связей: ' + relationshipName);
+      }
+    }
+
+    for (const partName of originalProtectedParts.map(entry => entry.name)) {
+      const verifiedEntry = verifiedZip.file(partName);
+      if (!verifiedEntry) {
+        throw new Error('В собранном DOCX отсутствует защищённый ресурс: ' + partName);
+      }
+      const verifiedBytes = await verifiedEntry.async('uint8array');
+      const originalBytes = originalProtectedParts.get(partName);
+      if (
+        verifiedBytes.length !== originalBytes.length ||
+        verifiedBytes.some((byte, index) => byte !== originalBytes[index])
+      ) {
+        throw new Error('Проверка собранного DOCX выявила изменение оформления: ' + partName);
+      }
+    }
+
     return {
       blob,
       text: previewParts.join('\n\n') || 'В DOCX не найден текст для перевода.'
