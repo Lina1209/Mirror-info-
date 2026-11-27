@@ -1648,8 +1648,27 @@
           ];
           await translateTextGroups(caches, chartNs, 'v');
         } else {
+          // В листах Excel разрешаем менять только inline-строки.
+          // Формулы и значения ячеек (включая числовые) должны остаться прежними.
+          const protectedCellValues = Array.from(doc.getElementsByTagNameNS(sheetNs, '*'))
+            .filter(element => element.localName === 'f' || element.localName === 'v')
+            .map(element => [
+              element.localName,
+              element.namespaceURI || '',
+              element.textContent || ''
+            ]);
           const groups = Array.from(doc.getElementsByTagNameNS(sheetNs, 'is'));
           await translateTextGroups(groups, sheetNs, 't');
+          const verifiedCellValues = Array.from(doc.getElementsByTagNameNS(sheetNs, '*'))
+            .filter(element => element.localName === 'f' || element.localName === 'v')
+            .map(element => [
+              element.localName,
+              element.namespaceURI || '',
+              element.textContent || ''
+            ]);
+          if (JSON.stringify(verifiedCellValues) !== JSON.stringify(protectedCellValues)) {
+            throw new Error('Перевод встроенной книги Excel изменил формулы или значения ячеек: ' + nestedEntry.name);
+          }
         }
         nestedZip.file(nestedEntry.name, new XMLSerializer().serializeToString(doc));
       }
