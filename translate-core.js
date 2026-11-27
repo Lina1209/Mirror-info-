@@ -1267,7 +1267,7 @@
     // Критические ресурсы оформления фиксируем отдельно: перевод текста не
     // должен менять стили, темы, нумерацию, настройки или встроенные шрифты.
     const protectedWordParts = zip.file(
-      /^word\/(styles\.xml|numbering\.xml|fontTable\.xml|settings\.xml|webSettings\.xml|theme\/.*|fonts\/.*|media\/.*)$/i
+      /^word\/(styles\.xml|numbering\.xml|fontTable\.xml|settings\.xml|webSettings\.xml|theme\/.*|fonts\/.*)$/i
     ).filter(entry => !entry.dir);
     const originalProtectedParts = new Map();
     for (const entry of protectedWordParts) {
