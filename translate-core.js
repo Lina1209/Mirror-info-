@@ -2946,9 +2946,27 @@
           previewImage(file);
         }
 
+        const fileExtension = extension(file);
+        const packageFormats = ['docx', 'epub', 'fb2', 'pdf'];
+        const skipLargePackagePreview =
+          packageFormats.includes(fileExtension) &&
+          file.size >= 8 * 1024 * 1024;
+
         progress(3, 'Проверяем файл…');
 
         try {
+          if (skipLargePackagePreview) {
+            // Большие структурированные документы будут разобраны один раз
+            // специализированным переводчиком. Повторное извлечение всего
+            // текста здесь создаёт лишние копии и расходует память браузера.
+            if (selectionToken !== fileSelectionToken || selectedFile !== file) return;
+            selectedFileText = '';
+            if (textInput) textInput.value = '';
+            progress(100, 'Большой документ выбран. Проверка структуры начнётся при переводе.');
+            setTimeout(hideProgress, 1200);
+            return;
+          }
+
           const extractedText = await extractFile(file);
           if (selectionToken !== fileSelectionToken || selectedFile !== file) return;
           selectedFileText = extractedText;
@@ -3079,7 +3097,12 @@
             source = selectedFileText.trim();
           }
 
-          if (!source) {
+          const selectedExtension = selectedFile ? extension(selectedFile) : '';
+          const packageFormats = ['docx', 'epub', 'fb2', 'pdf'];
+          const canTranslateSelectedPackage =
+            Boolean(selectedFile) && packageFormats.includes(selectedExtension);
+
+          if (!source && !canTranslateSelectedPackage) {
             showError(
               'Сначала загрузите файл или введите текст.'
             );
