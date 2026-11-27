@@ -164,3 +164,12 @@ The fixture is committed in `tests/pdf-merge-compatibility.html` (commits `a84ff
 ## Next PDF compatibility boundary: AcroForms
 
 The current merge harness uses `PDFDocument.copyPages`. It verifies page-level annotations and navigation structures, but it does not yet establish that document-level AcroForm field dictionaries, field names, widget appearances, calculation order, or form actions survive. Treat interactive form preservation as unsupported/unverified until a dedicated source-PDF form fixture and post-merge field/value/appearance assertions pass. A copied widget annotation alone is not proof that the AcroForm catalog and field tree are intact.
+
+
+## AcroForm limitation observed in Chromium
+
+GitHub Actions run `45977262548` (commit `2e51484`) completed successfully, but the result is a compatibility finding, not evidence of form preservation: the source PDF contained one text field (`batchA.sampleField`), while PDF.js reported **0 AcroForm fields** after the two batches were merged with `PDFDocument.copyPages`. The page-level merge test still passed. This confirms that the current copyPages-only merge path must not be described as preserving interactive PDF forms.
+
+A follow-up fixture (commit `f6575d8`) makes this loss an explicit expected assertion and adds highlight annotations to both source batches to test whether page-level text markup annotations survive. Its result is pending. Even if highlights pass, that does not imply support for AcroForms, widgets, signatures, attachments, or other catalog-level structures.
+
+Product implication: until a dedicated field-tree reconstruction strategy is implemented and tested, interactive forms must be marked unsupported/unverified in any PDF merge/translation workflow; do not silently promise that filled forms remain editable.
