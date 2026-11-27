@@ -20,6 +20,7 @@
   let selectedFile = null;
   let fileSelectionToken = 0;
   let activeTranslationToken = 0;
+  let translationInProgress = false;
   let ocrWorkerPromise = null;
   let ocrWorkerLanguage = '';
   let ocrQueue = Promise.resolve();
@@ -2871,7 +2872,7 @@
   function clearSelection() {
     fileSelectionToken += 1;
     activeTranslationToken += 1;
-    $('translateBtn')?.removeAttribute('disabled');
+    if (!translationInProgress) $('translateBtn')?.removeAttribute('disabled');
     selectedFile = null;
     selectedFileText = '';
     translatedAssetBlob = null;
@@ -2981,7 +2982,7 @@
         if (!file) return;
         const selectionToken = ++fileSelectionToken;
         activeTranslationToken += 1;
-        $('translateBtn')?.removeAttribute('disabled');
+        if (!translationInProgress) $('translateBtn')?.removeAttribute('disabled');
 
         clearError();
 
@@ -3165,6 +3166,7 @@
       translateBtn?.addEventListener(
         'click',
         async () => {
+          if (translationInProgress) return;
           clearError();
           const runToken = ++activeTranslationToken;
           const selectionToken = fileSelectionToken;
@@ -3190,6 +3192,7 @@
             return;
           }
 
+          translationInProgress = true;
           translateBtn.disabled = true;
 
           try {
@@ -3268,9 +3271,8 @@
             );
 
           } finally {
-            if (runToken === activeTranslationToken) {
-              translateBtn.disabled = false;
-            }
+            translationInProgress = false;
+            translateBtn.disabled = false;
           }
         }
       );
