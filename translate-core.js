@@ -2882,6 +2882,13 @@
     lastOcrFile = null;
     clearTranslatedAssetPreview();
 
+    // Очистка выбора должна очищать и сам опубликованный результат:
+    // иначе кнопка скачивания может сохранить текст предыдущего файла.
+    $('resultWrap')?.classList.add('hidden');
+    if ($('resultText')) $('resultText').textContent = '';
+    if ($('resultMeta')) $('resultMeta').textContent = '';
+    if ($('resultNote')) $('resultNote').textContent = '';
+
     if ($('fileInput')) {
       $('fileInput').value = '';
     }
