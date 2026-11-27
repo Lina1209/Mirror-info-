@@ -537,10 +537,19 @@
     }
 
     const pdfjs = await ensurePdfJs();
-    const pdf = await pdfjs.getDocument({
-      data: await file.arrayBuffer(),
-      isEvalSupported: false
-    }).promise;
+    // Передаём PDF.js временный адрес исходного File вместо полной копии
+    // file.arrayBuffer(): это уменьшает дополнительное потребление памяти.
+    const sourceUrl = URL.createObjectURL(file);
+    let pdf = null;
+    try {
+      pdf = await pdfjs.getDocument({
+        url: sourceUrl,
+        isEvalSupported: false
+      }).promise;
+    } catch (error) {
+      URL.revokeObjectURL(sourceUrl);
+      throw error;
+    }
 
     let extractedText = '';
     const MAX_PAGES = 1000;
@@ -629,6 +638,7 @@
       } catch (_) {
         // Не скрываем основную ошибку чтения из-за очистки PDF.js.
       }
+      URL.revokeObjectURL(sourceUrl);
     }
   }
 
@@ -994,10 +1004,18 @@
       }
     }
 
-    const sourcePdf = await pdfjs.getDocument({
-      data: await file.arrayBuffer(),
-      isEvalSupported: false
-    }).promise;
+    // Избегаем второй полной копии входного файла в ArrayBuffer.
+    const sourcePdfUrl = URL.createObjectURL(file);
+    let sourcePdf = null;
+    try {
+      sourcePdf = await pdfjs.getDocument({
+        url: sourcePdfUrl,
+        isEvalSupported: false
+      }).promise;
+    } catch (error) {
+      URL.revokeObjectURL(sourcePdfUrl);
+      throw error;
+    }
 
     // Собираем признаки PDF-возможностей, которые не входят в пересобранный файл.
     // Предупреждения показываем пользователю, чтобы интерактивные данные не терялись молча.
@@ -1625,6 +1643,7 @@
       } catch (_) {
         // Освобождение PDF.js ресурсов не должно заменять исходную ошибку.
       }
+      URL.revokeObjectURL(sourcePdfUrl);
     }
   }
 
