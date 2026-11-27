@@ -542,7 +542,7 @@
       isEvalSupported: false
     }).promise;
 
-    const pages = [];
+    let extractedText = '';
     const MAX_PAGES = 1000;
     const MAX_EXTRACTED_TEXT = 15000000;
     let extractedLength = 0;
@@ -599,11 +599,12 @@
           }
 
           if (text) {
-            extractedLength += text.length;
+            const separator = extractedText ? '\n\n' : '';
+            extractedLength += separator.length + text.length;
             if (extractedLength > MAX_EXTRACTED_TEXT) {
               throw new Error('В PDF слишком много текста для одного прохода в браузере. Разделите документ на несколько частей.');
             }
-            pages.push(text);
+            extractedText += separator + text;
           }
         } finally {
           if (canvas) {
@@ -620,9 +621,9 @@
         }
       }
 
-      return pages.join('\n\n');
+      return extractedText;
     } finally {
-      pages.length = 0;
+      extractedText = '';
       try {
         await pdf.destroy();
       } catch (_) {
@@ -3256,7 +3257,12 @@
             if (selectionToken !== fileSelectionToken || selectedFile !== file) return;
             selectedFileText = '';
             if (textInput) textInput.value = '';
-            progress(100, 'Большой документ выбран. Проверка структуры начнётся при переводе.');
+            progress(
+              100,
+              fileExtension === 'pdf'
+                ? 'PDF выбран. Чтение поддерживает до 1000 страниц; перевод сейчас — до 150 страниц и зависит от объёма изображений.'
+                : 'Большой документ выбран. Проверка структуры начнётся при переводе.'
+            );
             setTimeout(() => {
               if (selectionToken === fileSelectionToken && selectedFile === file) {
                 hideProgress();
