@@ -1315,9 +1315,13 @@
       for (const namespace of namespaces) {
         const elements = Array.from(doc.getElementsByTagNameNS(namespace, '*'));
         for (const element of elements) {
-          for (const attributeName of ['title', 'descr', 'alt']) {
-            const attribute = element.getAttributeNode(attributeName);
-            if (!attribute || !attribute.value.trim()) continue;
+          // У VML и Office альтернативный текст иногда хранится
+          // в атрибутах с отдельным namespace (например, o:title).
+          const attributes = Array.from(element.attributes).filter(attribute =>
+            ['title', 'descr', 'alt'].includes(attribute.localName || attribute.name)
+          );
+          for (const attribute of attributes) {
+            if (!attribute.value.trim()) continue;
             const original = attribute.value;
             const leading = original.match(/^\\s*/)?.[0] || '';
             const trailing = original.match(/\\s*$/)?.[0] || '';
