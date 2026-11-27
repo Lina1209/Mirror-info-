@@ -71,8 +71,10 @@ An isolated browser harness is available at `tests/pdf-merge-compatibility.html`
 
 The harness checks:
 - four-page output from two two-page inputs;
-- portrait and landscape page geometry;
-- presence of external URI and internal link annotations;
+- portrait and landscape geometry for both source batches;
+- extractable text on all four pages;
+- external URI targets from both batches;
+- internal link destination resolution and exact expected target page after concatenation (batch A page 2 and batch B page 4);
 - merged title metadata and successful PDF.js reopening.
 
 This is a compatibility experiment, not a completed test result: the harness has been committed but has **not** been executed in a real browser in this work session. Annotation presence does not prove that every internal destination resolves to the intended page. Cross-batch links, bookmarks/outlines, forms, signatures, attachments, tagged structure, large-file memory, and Cloudflare Workers compatibility remain unverified. The test page is not loaded by the production app and does not change the PDF translation path.
