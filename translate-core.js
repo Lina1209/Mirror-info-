@@ -2112,6 +2112,7 @@
     }
 
     const previewParts = [];
+    const originalEpubTextStructures = new Map();
     const chapterSelector = 'title,p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption,caption,dt,dd';
 
     // Сигнатура защищает ссылки, якоря, ID, пути к изображениям,
@@ -2145,6 +2146,7 @@
         throw new Error('Не удалось прочитать раздел EPUB: ' + entry.name);
       }
       const originalStructure = epubStructureSignature(doc);
+      originalEpubTextStructures.set(entry.name, originalStructure);
 
       // NCX содержит отдельные подписи оглавления в элементах <text>.
       // Переводим только их содержимое: navPoint, playOrder и content src остаются прежними.
@@ -2317,6 +2319,17 @@
         epubPackageSignature(verifiedDoc) !== originalSignature
       ) {
         throw new Error('После сборки EPUB изменились сведения пакета, манифест или порядок чтения: ' + name);
+      }
+    }
+
+    // Recheck chapter, NCX and navigation structure from the final archive.
+    for (const [name, originalSignature] of originalEpubTextStructures) {
+      const entry = verifiedEpub.file(name);
+      if (!entry) throw new Error('В готовом EPUB отсутствует глава или навигация: ' + name);
+      const verifiedTextDoc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
+      if (verifiedTextDoc.querySelector('parsererror') ||
+          epubStructureSignature(verifiedTextDoc) !== originalSignature) {
+        throw new Error('После окончательной сборки EPUB изменились ссылки, якоря, ID или структура навигации: ' + name);
       }
     }
 
