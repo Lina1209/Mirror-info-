@@ -103,22 +103,46 @@
             const copied = await merged.copyPages(source, source.getPageIndices());
             copied.forEach(page => merged.addPage(page));
 
-            // pdf-lib copies page objects but does not rewrite direct /Dest
-            // references inside copied link annotations. Remap each source
-            // page reference to its corresponding page in the merged document.
+            // pdf-lib copies annotation objects but does not reliably remap
+            // GoTo destinations. Read each destination from the source
+            // annotation, then point the copied annotation at the matching
+            // page reference in the merged document.
             const pageRefMap = new Map(
               sourcePages.map((page, index) => [page.ref.toString(), copied[index].ref])
             );
-            for (const copiedPage of copied) {
-              const annotations = copiedPage.node.Annots();
-              if (!annotations) continue;
-              for (let index = 0; index < annotations.size(); index += 1) {
-                const annotation = merged.context.lookup(annotations.get(index));
-                const destination = annotation.get(window.PDFLib.PDFName.of('Dest'));
-                if (!(destination instanceof window.PDFLib.PDFArray)) continue;
-                const sourceTarget = destination.get(0);
-                const mergedTarget = pageRefMap.get(sourceTarget.toString());
-                if (mergedTarget) destination.set(0, mergedTarget);
+            const PDFName = window.PDFLib.PDFName;
+            for (let pageIndex = 0; pageIndex < sourcePages.length; pageIndex += 1) {
+              const sourceAnnots = sourcePages[pageIndex].node.Annots();
+              const copiedAnnots = copied[pageIndex].node.Annots();
+              if (!sourceAnnots || !copiedAnnots) continue;
+              const count = Math.min(sourceAnnots.size(), copiedAnnots.size());
+              for (let annotationIndex = 0; annotationIndex < count; annotationIndex += 1) {
+                const sourceAnnotation = source.context.lookup(sourceAnnots.get(annotationIndex));
+                const copiedAnnotation = merged.context.lookup(copiedAnnots.get(annotationIndex));
+                let sourceDestination = sourceAnnotation.get(PDFName.of('Dest'));
+                let copiedAction = copiedAnnotation.get(PDFName.of('A'));
+                let sourceAction = sourceAnnotation.get(PDFName.of('A'));
+                let destinationInAction = false;
+                if (!(sourceDestination instanceof window.PDFLib.PDFArray) && sourceAction) {
+                  sourceAction = source.context.lookup(sourceAction);
+                  const actionType = sourceAction.get(PDFName.of('S'));
+                  if (actionType && actionType.toString() === '/GoTo') {
+                    sourceDestination = sourceAction.get(PDFName.of('D'));
+                    destinationInAction = true;
+                  }
+                }
+                if (!(sourceDestination instanceof window.PDFLib.PDFArray)) continue;
+                const originalTarget = sourceDestination.get(0);
+                const mappedTarget = pageRefMap.get(originalTarget.toString());
+                if (!mappedTarget) continue;
+                const rewrittenDestination = sourceDestination.clone(merged.context);
+                rewrittenDestination.set(0, mappedTarget);
+                if (destinationInAction && copiedAction) {
+                  copiedAction = merged.context.lookup(copiedAction);
+                  copiedAction.set(PDFName.of('D'), rewrittenDestination);
+                } else {
+                  copiedAnnotation.set(PDFName.of('Dest'), rewrittenDestination);
+                }
               }
             }
           }
