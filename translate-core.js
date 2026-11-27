@@ -2116,11 +2116,50 @@
     // names, identifiers, manifest paths, spine order, or resource references.
     const dcNamespace = 'http://purl.org/dc/elements/1.1/';
     const metadataEntries = zip.file(/\.opf$/i).filter(entry => !entry.dir);
+    const originalOpfSignatures = new Map();
+
+    function epubPackageSignature(document) {
+      const parts = [];
+      const walker = document.createTreeWalker(document, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const attributes = Array.from(node.attributes || [])
+            .map(attribute => [
+              attribute.namespaceURI || '',
+              attribute.name,
+              attribute.value
+            ].join('='))
+            .sort()
+            .join('|');
+          parts.push('E:' + (node.namespaceURI || '') + ':' +
+            (node.localName || node.nodeName) + ':' + attributes);
+          continue;
+        }
+
+        let parent = node.parentElement;
+        let translatableMetadataText = false;
+        while (parent) {
+          if (
+            parent.namespaceURI === dcNamespace &&
+            ['title', 'description', 'subject'].includes(parent.localName)
+          ) {
+            translatableMetadataText = true;
+            break;
+          }
+          parent = parent.parentElement;
+        }
+        if (!translatableMetadataText) parts.push('T:' + node.textContent);
+      }
+      return parts.join('\\n');
+    }
+
     for (const entry of metadataEntries) {
       const metadataDoc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
       if (metadataDoc.querySelector('parsererror')) {
         throw new Error('Не удалось прочитать метаданные EPUB: ' + entry.name);
       }
+      originalOpfSignatures.set(entry.name, epubPackageSignature(metadataDoc));
       const metadataTags = ['title', 'description', 'subject'];
       for (const tagName of metadataTags) {
         for (const element of Array.from(metadataDoc.getElementsByTagNameNS(dcNamespace, tagName))) {
@@ -2138,6 +2177,9 @@
           previewParts.push(translated);
           distributeTranslatedText(leading + translated + trailing, textNodes);
         }
+      }
+      if (epubPackageSignature(metadataDoc) !== originalOpfSignatures.get(entry.name)) {
+        throw new Error('Проверка OPF выявила изменение манифеста, порядка глав, автора, ID или ссылок: ' + entry.name);
       }
       zip.file(entry.name, new XMLSerializer().serializeToString(metadataDoc));
     }
@@ -2164,6 +2206,18 @@
       (await verifiedEpub.file('mimetype').async('text')).trim() !== 'application/epub+zip'
     ) {
       throw new Error('Проверка собранного EPUB выявила повреждение структуры архива.');
+    }
+
+    for (const [name, originalSignature] of originalOpfSignatures) {
+      const entry = verifiedEpub.file(name);
+      if (!entry) throw new Error('В готовом EPUB отсутствует OPF-пакет: ' + name);
+      const verifiedDoc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
+      if (
+        verifiedDoc.querySelector('parsererror') ||
+        epubPackageSignature(verifiedDoc) !== originalSignature
+      ) {
+        throw new Error('После сборки EPUB изменились сведения пакета, манифест или порядок чтения: ' + name);
+      }
     }
 
     for (const [name, originalHash] of protectedEpubResources) {
