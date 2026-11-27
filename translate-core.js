@@ -1241,7 +1241,7 @@
       });
 
       setTranslatedAsset(blob, file, outputExtension);
-      return { blob, text: translatedLines.join('\\n') };
+      return { blob, text: translatedLines.join('\n') };
     } finally {
       URL.revokeObjectURL(objectUrl);
       image.onload = null;
