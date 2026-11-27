@@ -263,7 +263,7 @@ This is a focused synthetic Highlight test. It does not establish preservation o
 
 ## Popup fixture API correction (run 45980099749)
 
-The first Chromium run for the synthetic Text/Popup relationship check failed before reaching the merge assertions: the fixture called `PDFBool.of(false)`, but pdf-lib 1.17.1 exposes boolean singletons rather than that factory method. This was a test-fixture API error, not evidence that Popup references were lost. The fixture now uses `PDFBool.False` (commit e652cc7). The Popup preservation assertion remains unverified until a fresh browser run completes.
+The first Chromium run for the synthetic Text/Popup relationship check failed before reaching the merge assertions: the fixture called `PDFBool.of(false)`, but pdf-lib 1.17.1 exposes boolean singletons rather than that factory method. This was a test-fixture API error, not evidence that Popup references were lost. The fixture now uses `PDFBool.False` (commit e652cc7). That assertion was subsequently verified by run 45980285069, documented in the following section.
 
 
 ## Text annotation Popup relationship (run 45980285069)
@@ -274,3 +274,12 @@ The Chromium synthetic merge compatibility run passed after correcting the fixtu
 ## Text annotation normal appearance stream (run 45980479843)
 
 A Chromium synthetic compatibility run passed for a Text annotation carrying a normal appearance entry (`/AP /N`). The test confirmed that the appearance stream exists in the source fixture and remains a non-empty PDF raw stream after the two-batch merge. This is a structural preservation check only; it does not prove that every PDF viewer renders the appearance identically or that arbitrary appearance resources/state dictionaries are supported. A follow-up test now additionally checks the Form XObject BBox and a known content marker in the stream bytes; that strengthened assertion is pending its own CI run.
+
+
+## Text annotation appearance stream payload and BBox (run 45980673053)
+
+The strengthened Chromium test passed. In addition to confirming the Text annotation's normal appearance stream exists before and after the two-batch merge, the assertion verifies the Form XObject BBox has four coordinates and that the stream retains the fixture's known content marker. This confirms the tested simple appearance stream's structural payload and bounding box survive. It does not establish rendering equivalence across PDF viewers, complex resource dictionaries, appearance state variants, or arbitrary real-world annotations.
+
+## Popup rectangle and open-state check
+
+A follow-up synthetic fixture assertion checks that the Popup /Rect remains exactly [270, 215, 420, 330] and /Open remains false after merge. The assertion was added in commit b574ec9; its Chromium run is pending. Do not treat popup geometry/state preservation as verified until that run passes.
