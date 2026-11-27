@@ -269,3 +269,8 @@ The first Chromium run for the synthetic Text/Popup relationship check failed be
 ## Text annotation Popup relationship (run 45980285069)
 
 The Chromium synthetic merge compatibility run passed after correcting the fixture boolean to `PDFBool.False`. It verified that the source Text annotation and Popup have reciprocal references before merge and that the merged output retains both the Popup annotation and the reciprocal `/Parent` and `/Popup` references. This confirms the tested simple Text/Popup case only; it does not establish compatibility for arbitrary popup geometries, replies, or appearance streams. The fixture uses synthetic PDFs and does not validate real-world documents or production runtime limits.
+
+
+## Text annotation normal appearance stream (run 45980479843)
+
+A Chromium synthetic compatibility run passed for a Text annotation carrying a normal appearance entry (`/AP /N`). The test confirmed that the appearance stream exists in the source fixture and remains a non-empty PDF raw stream after the two-batch merge. This is a structural preservation check only; it does not prove that every PDF viewer renders the appearance identically or that arbitrary appearance resources/state dictionaries are supported. A follow-up test now additionally checks the Form XObject BBox and a known content marker in the stream bytes; that strengthened assertion is pending its own CI run.
