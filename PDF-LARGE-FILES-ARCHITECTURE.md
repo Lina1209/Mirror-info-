@@ -152,3 +152,10 @@ GitHub Actions run `45976879708` completed successfully in Chromium on 2026-11-2
 The same run also passed the existing four-page, geometry, rotation, text extraction, external URI, internal link, and metadata assertions.
 
 **Scope warning:** this verifies only the synthetic outline shape created by the harness and the tested page-destination mapping. It does not establish preservation of arbitrary source outline dictionaries or all real-world PDF bookmark variants. Named destinations, remote/URI actions, open-state flags, styles/colors, malformed outline trees, unusual Unicode titles, forms, signatures, attachments, and tagged structure remain unverified. The test reconstructs a simple outline hierarchy; it is not evidence of full PDF feature preservation or production merge readiness.
+
+
+## Named-destination merge fixture (pending automated verification)
+
+The next browser fixture adds a PDF catalog name tree containing a named page destination to each source batch. The same key is intentionally used in both inputs to exercise collision handling: the merge prototype prefixes imported names with `batch-a-` and `batch-b-`, remaps each destination's page reference, and then asks PDF.js to resolve both names in the merged output. Expected destinations are merged page 1 and merged page 3.
+
+The fixture is committed in `tests/pdf-merge-compatibility.html` (commits `a84fff7` and `c74665c`). GitHub Actions run `45977104047` is the current Chromium verification run; do not count named-destination preservation as verified until it completes successfully. This fixture currently validates catalog name-tree lookup, not every possible named destination encoding or annotation action form.
