@@ -1348,6 +1348,18 @@
       }
     }
 
+    // Старые OLE-вложения сохраняем в пакете без изменения байтов.
+    // Их внутреннее содержимое требует отдельного специализированного парсера.
+    const legacyOleParts = zip.file(/word\/embeddings\//i)
+      .filter(entry => /\.(bin|xls|ppt|doc)$/i.test(entry.name));
+    if (legacyOleParts.length) {
+      previewParts.push(
+        'Примечание: старые встроенные OLE-объекты сохранены без изменений; их внутренний текст не переводился.'
+      );
+    }
+    // Поля Word (instrText), формулы OMML, коды нумерации и связи объектов
+    // намеренно не переписываются: переводятся только обычные текстовые узлы w:t.
+
     const blob = await zip.generateAsync({
       type: 'blob',
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
