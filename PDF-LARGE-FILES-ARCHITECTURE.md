@@ -52,6 +52,19 @@ A single in-memory merge of all chunks may recreate the same memory problem. If 
 - Raise limits only from measured results. Keep page count and raster-pixel limits separate.
 - Retain the existing conservative browser-only path as fallback until the batch pipeline is proven.
 
+## Critical runtime constraint: batch merge is not automatically memory-bounded
+
+Splitting OCR/translation into page batches and storing those batches in R2 reduces the browser's working set, but a final merge with `pdf-lib` is still an in-memory operation: the source documents are parsed into object graphs and the destination document is serialized as a complete byte array. R2 is object storage, not a streaming PDF object merger. Do not claim that this design supports 300–500 pages merely because the translation stage is batched.
+
+Cloudflare Workers currently document a 128 MB memory limit per isolate on both Free and Paid plans. The documented CPU allowance differs sharply: Free is 10 ms per request; Paid defaults to 30 seconds and can be raised to 5 minutes. PDF parsing/rasterization/merging is CPU- and memory-intensive, so a Pages Function is not an appropriate place for a long, monolithic merge job. Confirm the actual account plan and runtime limits before selecting any Cloudflare execution path. See the official [Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
+
+Before production design is approved, compare these options with measured peak memory:
+1. A genuinely incremental PDF writer that writes page objects and cross-reference data without holding the entire final document in memory (must be validated against PDF readers and all required metadata/link features).
+2. A separate container/server job with explicit memory, CPU, timeout, and disk quotas, while Cloudflare handles authorization, job state, and private object storage.
+3. A documented product cap based on tested device/server resources if neither path is economically viable.
+
+The `pdf-lib` browser spike is only a feature-compatibility experiment. It is not a production merger, a streaming writer, or evidence of Cloudflare Workers suitability. Never raise the current 150-page translation cap until the chosen finalization architecture passes representative memory, time, cancellation, retry, and document-integrity tests.
+
 ## PDF merge compatibility spike (test harness added)
 
 An isolated browser harness is available at `tests/pdf-merge-compatibility.html`. It pins the repository's current jsPDF 2.5.2 and PDF.js 3.11.174 versions plus pdf-lib 1.17.1, creates two small independent PDF batches, merges their pages with `PDFDocument.copyPages`, then reopens the result with PDF.js.
