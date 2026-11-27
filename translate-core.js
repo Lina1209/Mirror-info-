@@ -1626,6 +1626,7 @@
       docxPreviewLength += separator.length + piece.length;
     }
     const originalDocxTextStructures = new Map();
+    const originalDocxTableLayouts = new Map();
     const wordNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
     const drawingNs = 'http://schemas.openxmlformats.org/drawingml/2006/main';
     const chartNs = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
@@ -1661,6 +1662,34 @@
         ]);
       }
       return JSON.stringify(parts);
+    }
+
+    function docxTableLayoutSignature(doc) {
+      const structuralNames = new Set([
+        'tbl', 'tblPr', 'tblW', 'tblLayout', 'tblGrid', 'gridCol',
+        'tr', 'trPr', 'trHeight', 'cantSplit', 'tblHeader',
+        'tc', 'tcPr', 'tcW', 'gridSpan', 'vMerge', 'hMerge',
+        'shd', 'tcBorders', 'tblBorders', 'tblCellMar', 'tcMar',
+        'tblInd', 'tblCellSpacing', 'jc'
+      ]);
+      const tables = Array.from(doc.getElementsByTagNameNS(wordNs, 'tbl'));
+      return JSON.stringify(tables.map((table, tableIndex) => {
+        const parts = [];
+        const walker = doc.createTreeWalker(table, NodeFilter.SHOW_ELEMENT);
+        let element;
+        while ((element = walker.nextNode())) {
+          if (element.namespaceURI !== wordNs || !structuralNames.has(element.localName)) continue;
+          const attributes = Array.from(element.attributes)
+            .map(attribute => [
+              attribute.namespaceURI || '',
+              attribute.localName || attribute.name,
+              attribute.value
+            ])
+            .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+          parts.push([element.localName, attributes]);
+        }
+        return [tableIndex, parts];
+      }));
     }
 
     async function translateTextGroups(groups, namespace, tagName) {
@@ -1731,6 +1760,7 @@
       }
       const originalStructure = docxStructureSignature(doc);
       originalDocxTextStructures.set(entry.name, originalStructure);
+      originalDocxTableLayouts.set(entry.name, docxTableLayoutSignature(doc));
 
       // Абзацы включают текст в ячейках таблиц, колонтитулах,
       // сносках, примечаниях и комментариях; разметка Word сохраняется.
@@ -2052,6 +2082,18 @@
         docxStructureSignature(verifiedDoc) !== originalSignature
       ) {
         throw new Error('После окончательной сборки DOCX изменилась структура документа или диаграммы: ' + partName);
+      }
+    }
+
+    // Отдельно подтверждаем геометрию таблиц после повторного открытия ZIP:
+    // объединения ячеек, сетку столбцов, высоты строк и параметры границ.
+    for (const [partName, originalTableLayout] of originalDocxTableLayouts) {
+      const verifiedEntry = verifiedZip.file(partName);
+      if (!verifiedEntry) throw new Error('После сборки DOCX отсутствует часть с таблицами: ' + partName);
+      const verifiedDoc = new DOMParser().parseFromString(await verifiedEntry.async('text'), 'application/xml');
+      if (verifiedDoc.querySelector('parsererror') ||
+          docxTableLayoutSignature(verifiedDoc) !== originalTableLayout) {
+        throw new Error('После сборки DOCX изменилась геометрия таблиц, объединение ячеек или размеры строк: ' + partName);
       }
     }
 
