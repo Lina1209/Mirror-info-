@@ -245,3 +245,10 @@ Verified in this synthetic fixture:
 - The saved merged PDF reopens successfully with PDF.js; the broader page, rotation, links, named destinations, outlines, and tested annotation checks also pass in the same run.
 
 This is a bounded prototype result, not general AcroForm compatibility. It uses small synthetic forms with simple field names, one page per source, one widget for text/checkbox/dropdown, and a two-option radio group. Still unverified: real-world forms, arbitrary export names and escaped PDF names, multiple widgets per text/checkbox/dropdown field, additional radio states, field flags (read-only/required/locked), tooltips, formatting/validation/calculation actions, custom appearance fidelity, fonts, Unicode edge cases, signatures, XFA, and form JavaScript. The baseline `copyPages` operation still loses the document-level AcroForm field tree; only the separate reconstruction prototype restores these tested simple fields. Do not describe arbitrary interactive forms as fully preserved.
+
+
+## Verified annotation geometry and color preservation in synthetic fixture
+
+GitHub Actions Chromium run 45979745334 completed its browser test step successfully for commit 91d1e79. The test inspects raw PDF annotation dictionaries (rather than relying on PDF.js display summaries) and verifies that the Batch A Highlight annotation retains its exact eight QuadPoints coordinates and RGB color array [1, 1, 0] after merging. It also verifies that Underline and StrikeOut QuadPoints survive unchanged. Existing checks confirm the tested markup annotation objects and their raw Contents strings survive.
+
+Scope remains narrow: this verifies one synthetic Highlight geometry/color fixture and one synthetic Underline and StrikeOut geometry fixture. It does not prove appearance-stream rendering, opacity, blend modes, author/date, popup/reply chains, arbitrary real-world annotations, or fidelity in every PDF viewer. The browser test run's final result is PASS; the job cleanup was still finishing at the time of this status read.
