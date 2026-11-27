@@ -1591,6 +1591,7 @@
     }
 
     const previewParts = [];
+    const originalDocxTextStructures = new Map();
     const wordNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
     const drawingNs = 'http://schemas.openxmlformats.org/drawingml/2006/main';
     const chartNs = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
@@ -1695,6 +1696,7 @@
         throw new Error('Не удалось прочитать часть DOCX: ' + entry.name);
       }
       const originalStructure = docxStructureSignature(doc);
+      originalDocxTextStructures.set(entry.name, originalStructure);
 
       // Абзацы включают текст в ячейках таблиц, колонтитулах,
       // сносках, примечаниях и комментариях; разметка Word сохраняется.
@@ -1728,6 +1730,7 @@
         throw new Error('Не удалось прочитать диаграмму или схему: ' + entry.name);
       }
       const originalDrawingStructure = docxStructureSignature(doc);
+      originalDocxTextStructures.set(entry.name, originalDrawingStructure);
       const paragraphs = Array.from(doc.getElementsByTagNameNS(drawingNs, 'p'));
       await translateTextGroups(paragraphs, drawingNs, 't');
       await translateDescriptionAttributes(doc, [drawingNs]);
@@ -1969,6 +1972,25 @@
         throw new Error('После окончательной упаковки DOCX изменилось изображение: ' + partName);
       }
     }
+    // Повторная проверка XML-структуры уже после окончательной упаковки:
+    // таблицы, блоки, диаграммы, ссылки и расположение элементов не должны теряться.
+    for (const [partName, originalSignature] of originalDocxTextStructures) {
+      const verifiedEntry = verifiedZip.file(partName);
+      if (!verifiedEntry) {
+        throw new Error('В собранном DOCX отсутствует структурная часть: ' + partName);
+      }
+      const verifiedDoc = new DOMParser().parseFromString(
+        await verifiedEntry.async('text'),
+        'application/xml'
+      );
+      if (
+        verifiedDoc.querySelector('parsererror') ||
+        docxStructureSignature(verifiedDoc) !== originalSignature
+      ) {
+        throw new Error('После окончательной сборки DOCX изменилась структура документа или диаграммы: ' + partName);
+      }
+    }
+
     const verifiedPartNames = Object.keys(verifiedZip.files).filter(name => !verifiedZip.files[name].dir);
     if (
       verifiedPartNames.length !== originalPartNames.length ||
