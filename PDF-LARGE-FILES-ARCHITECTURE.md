@@ -216,3 +216,18 @@ This verifies only one synthetic text field with one widget, a simple value, and
 The first Chromium run for the expanded fixture (run 45979085279, commit 53ed44e) exposed two separate issues. First, the radio-group API expects the export/on-state name for the selected option, not the human-readable option label; the harness now maps the selected source option to its corresponding widget on-value. Second, after creating a reconstructed checkbox widget, its saved PDF.js field value still appeared as `Off`, even though the source checkbox had been checked. This shows the initial reconstruction sequence did not preserve the checkbox state. The follow-up moved state restoration after widget creation and explicitly refreshed appearances (commit 81be393); this correction has not yet passed a new browser run.
 
 The same failed run showed the dropdown reconstruction reopened as a combobox with the selected value `French`. Radio widgets were present, but PDF.js reported value `0` for both radio widget entries; the test must still establish that the field's selected option is actually retained. Therefore checkbox, radio-group, and dropdown support must remain experimental/unverified. Only the separate synthetic text-field reconstruction described above has passed. Do not claim general interactive-form preservation.
+
+
+
+## Verified synthetic AcroForm checkbox, radio-group, and dropdown reconstruction
+
+GitHub Actions run `45979562565` completed successfully in Chromium on 2026-11-27 (commit `c858ce4`). The synthetic fixture now verifies the following reconstructed fields after saving and reopening the merged PDF with PDF.js:
+
+- A checked checkbox reopens with value `Yes`.
+- A two-option radio group reopens with the second widget option selected (PDF.js export value `1`), matching the source selection `standard`.
+- A dropdown reopens as a combobox with the selected value `French`.
+- The previously verified simple text field still retains its namespaced name, text type, and value.
+
+The checkbox needed its widget created before restoring its checked state and refreshing appearances. The radio field's widget export names are index-like values (`0`, `1`), not the human-readable labels; the fixture verifies the second selected widget rather than claiming the export value itself is the label.
+
+**Scope remains narrow:** this is a synthetic fixture with one page, one text field, one checkbox, one two-widget radio group, and one dropdown. It does not establish fidelity for arbitrary PDF forms, multi-page/multi-widget fields, field flags, tooltips, validation/calculation actions, custom appearance streams, choice fields with editable/custom values, signatures, XFA, JavaScript actions, or malformed/real-world AcroForms. The underlying `copyPages`-only merge still reports zero document-level AcroForm fields; the successful result is from the separate reconstruction prototype. The summary's original pre-reconstruction field-count diagnostic remains zero and must not be read as the final reconstructed field count. Do not claim general AcroForm preservation.
