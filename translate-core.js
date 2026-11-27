@@ -1570,21 +1570,60 @@
   }
 
   async function translateEpubPackage(file) {
+    if (file.size > 100 * 1024 * 1024) {
+      throw new Error('Для перевода EPUB в браузере пока поддерживаются файлы до 100 МБ.');
+    }
+
     const JSZip = await ensureJSZip();
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
-    const entries = zip.file(/\.(xhtml|html|htm)$/i).filter(entry => !entry.dir);
+    const mimetypeEntry = zip.file('mimetype');
+    if (!mimetypeEntry || (await mimetypeEntry.async('text')).trim() !== 'application/epub+zip') {
+      throw new Error('Файл не соответствует структуре EPUB: отсутствует корректный mimetype.');
+    }
 
+    const entries = zip.file(/\.(xhtml|html|htm)$/i).filter(entry => !entry.dir);
     if (!entries.length) {
       throw new Error('В EPUB не найдены главы XHTML/HTML.');
     }
 
     const previewParts = [];
-    const selector = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption,caption,dt,dd';
+    const selector = 'title,p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption,caption,dt,dd';
 
     for (const entry of entries) {
       const xml = await entry.async('text');
-      const updated = await translateXmlBlocks(xml, selector, 'главы EPUB', previewParts);
-      zip.file(entry.name, updated);
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      if (doc.querySelector('parsererror')) {
+        throw new Error('Не удалось прочитать раздел EPUB: ' + entry.name);
+      }
+
+      const updated = await translateXmlBlocks(
+        new XMLSerializer().serializeToString(doc),
+        selector,
+        'главы EPUB',
+        previewParts
+      );
+      const translatedDoc = new DOMParser().parseFromString(updated, 'application/xml');
+      if (translatedDoc.querySelector('parsererror')) {
+        throw new Error('После перевода повреждена XML-разметка EPUB: ' + entry.name);
+      }
+
+      // Переводим доступные описания изображений и подсказки, не меняя src/href,
+      // идентификаторы, классы CSS и ссылки навигации.
+      const translatableAttributes = ['alt', 'title', 'aria-label'];
+      for (const element of Array.from(translatedDoc.getElementsByTagName('*'))) {
+        for (const attributeName of translatableAttributes) {
+          const attribute = element.getAttributeNode(attributeName);
+          if (!attribute || !attribute.value.trim()) continue;
+          const original = attribute.value;
+          const leading = original.match(/^\\s*/)?.[0] || '';
+          const trailing = original.match(/\\s*$/)?.[0] || '';
+          const translated = await translateInParts(original.trim());
+          previewParts.push(translated);
+          attribute.value = leading + translated + trailing;
+        }
+      }
+
+      zip.file(entry.name, new XMLSerializer().serializeToString(translatedDoc));
     }
 
     const blob = await zip.generateAsync({
@@ -1594,7 +1633,7 @@
 
     return {
       blob,
-      text: previewParts.join('\n\n') || 'В EPUB не найден текст для перевода.'
+      text: previewParts.join('\\n\\n') || 'В EPUB не найден текст для перевода.'
     };
   }
 
