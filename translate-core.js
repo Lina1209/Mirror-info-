@@ -1338,7 +1338,8 @@
             }
             if (typeof outputPdf.link === 'function') {
               for (const annotation of annotations) {
-                if (annotation?.subtype !== 'Link' || !Array.isArray(annotation.rect)) continue;
+                try {
+                  if (annotation?.subtype !== 'Link' || !Array.isArray(annotation.rect)) continue;
                 const viewportRect = viewport.convertToViewportRectangle(annotation.rect);
                 if (!Array.isArray(viewportRect) || viewportRect.length !== 4) continue;
                 const left = Math.max(0, Math.min(pageWidth, Math.min(viewportRect[0], viewportRect[2]) * pointScaleX));
@@ -1367,6 +1368,9 @@
                   copiedLinkAnnotationCount += 1;
                 } catch (_) {
                   // Unresolvable internal destinations are skipped safely.
+                }
+                } catch (_) {
+                  // A malformed individual link must not prevent later links from being copied.
                 }
               }
             }
