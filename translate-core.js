@@ -482,65 +482,102 @@
 
   // Чтение PDF
   async function readPdf(file) {
-    const pdfjs = await ensurePdfJs();
+    if (file.size > 100 * 1024 * 1024) {
+      throw new Error('Для чтения PDF в браузере пока поддерживаются файлы до 100 МБ.');
+    }
 
+    const pdfjs = await ensurePdfJs();
     const pdf = await pdfjs.getDocument({
-      data: await file.arrayBuffer()
+      data: await file.arrayBuffer(),
+      isEvalSupported: false
     }).promise;
 
     const pages = [];
+    const MAX_PAGES = 1000;
+    const MAX_EXTRACTED_TEXT = 15000000;
+    let extractedLength = 0;
 
-    for (
-      let pageNo = 1;
-      pageNo <= pdf.numPages;
-      pageNo++
-    ) {
-      progress(
-        5 + pageNo / pdf.numPages * 65,
-        `Читаем PDF: страница ${pageNo} из ${pdf.numPages}…`
-      );
+    try {
+      if (pdf.numPages > MAX_PAGES) {
+        throw new Error('В режиме чтения поддерживается до 1000 страниц за один проход. Разделите документ на части.');
+      }
 
-      const page = await pdf.getPage(pageNo);
+      for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+        progress(
+          5 + pageNo / pdf.numPages * 65,
+          'Читаем PDF: страница ' + pageNo + ' из ' + pdf.numPages + '…'
+        );
 
-      const content = await page.getTextContent();
-
-      let text = content.items
-        .map(item => item.str || '')
-        .join(' ')
-        .replace(/[ \t]+/g, ' ')
-        .trim();
-
-      if (text.length < 25) {
-        const viewport = page.getViewport({
-          scale: 1.5
-        });
-
-        const canvas = document.createElement('canvas');
-
-        const context = canvas.getContext('2d', {
-          willReadFrequently: true
-        });
-
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-
-        await page.render({
-          canvasContext: context,
-          viewport
-        }).promise;
+        let page = null;
+        let canvas = null;
 
         try {
-          text = await ocrImage(canvas);
+          page = await pdf.getPage(pageNo);
+          const content = await page.getTextContent();
+
+          let text = content.items
+            .map(item => item.str || '')
+            .join(' ')
+            .replace(/[ \t]+/g, ' ')
+            .trim();
+
+          if (text.length < 25) {
+            const baseViewport = page.getViewport({ scale: 1 });
+            const scale = Math.min(
+              1.5,
+              Math.sqrt(16000000 / Math.max(1, baseViewport.width * baseViewport.height))
+            );
+            const viewport = page.getViewport({ scale });
+            canvas = document.createElement('canvas');
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+
+            const context = canvas.getContext('2d', {
+              willReadFrequently: true
+            });
+            if (!context) {
+              throw new Error('Не удалось подготовить страницу PDF для распознавания.');
+            }
+
+            await page.render({
+              canvasContext: context,
+              viewport
+            }).promise;
+
+            text = await ocrImage(canvas);
+          }
+
+          if (text) {
+            extractedLength += text.length;
+            if (extractedLength > MAX_EXTRACTED_TEXT) {
+              throw new Error('В PDF слишком много текста для одного прохода в браузере. Разделите документ на несколько частей.');
+            }
+            pages.push(text);
+          }
         } finally {
-          canvas.width = 0;
-          canvas.height = 0;
+          if (canvas) {
+            canvas.width = 0;
+            canvas.height = 0;
+          }
+          if (page) {
+            try {
+              await page.cleanup();
+            } catch (_) {
+              // Не скрываем основную ошибку чтения из-за очистки.
+            }
+          }
         }
       }
 
-      if (text) pages.push(text);
+      return pages.join('\n\n');
+    } finally {
+      pages.length = 0;
+      try {
+        await pdf.destroy();
+      } catch (_) {
+        // Не скрываем основную ошибку чтения из-за очистки PDF.js.
+      }
     }
-
-    return pages.join('\n\n');
   }
 
   async function validateImageSize(file) {
