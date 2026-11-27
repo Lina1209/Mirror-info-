@@ -112,6 +112,7 @@
           assert(result.externalLinks >= 2, 'External URI link annotations survive from both batches');
           assert(result.internalLinks >= 2, 'Internal link annotations remain present in the merged output');
           assert(result.resolvedInternalLinks === 2 && result.brokenInternalLinks === 0, 'Both internal links resolve without broken destinations');
+          report('Internal targets observed (zero-based): ' + JSON.stringify(result.internalTargets));
           const targetBySource = new Map(result.internalTargets.map(link => [link.sourcePageIndex, link.targetPageIndex]));
           assert(targetBySource.get(0) === 1 && targetBySource.get(2) === 3, 'Internal links point to the correct page within each merged batch (page 2 and page 4)');
           assert(result.externalUrls.includes('https://example.com/batch-a') && result.externalUrls.includes('https://example.com/batch-b'), 'Both batch external link targets are retained');
