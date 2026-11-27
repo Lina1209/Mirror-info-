@@ -29,16 +29,17 @@
             <h1 class="mk-section__title">Личный кабинет</h1>
             <div class="grid gap-4 sm:grid-cols-2 mb-8">
                 <div class="mk-card p-5">
-                    <span class="text-sm font-semibold text-[var(--text-muted)]">Бесплатный лимит</span>
+                    <span class="text-sm font-semibold text-[var(--text-muted)]">Локальный счётчик браузера</span>
                     <p class="mt-2 text-2xl font-bold"><span id="accTrialLeft">3</span> из 3 файлов</p>
                 </div>
                 <div class="mk-card p-5">
-                    <span class="text-sm font-semibold text-[var(--text-muted)]">Оформлено заявок</span>
+                    <span class="text-sm font-semibold text-[var(--text-muted)]">Локальная история</span>
                     <p id="accOrdersCount" class="mt-2 text-2xl font-bold">0</p>
                 </div>
             </div>
 
             <div class="mk-card mk-workbench">
+                <p class="text-sm text-[var(--text-muted)] mb-4">Важно: новые заявки сохраняются на сервере, но личная авторизация и безопасная синхронизация истории между устройствами ещё не подключены. Здесь отображаются только старые записи, сохранённые в этом браузере.</p>
                 <div class="flex items-center justify-between gap-3 mb-4">
                     <h2 class="text-lg font-bold">История ваших заявок</h2>
                     <button type="button" id="clearHistoryBtn" class="mk-btn mk-btn--ghost mk-btn--sm hidden">Очистить</button>
@@ -66,36 +67,7 @@
         </div>
     </footer>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const trialSaved = localStorage.getItem('mirror_translator_free_left');
-            document.getElementById('accTrialLeft').textContent = trialSaved === null ? 3 : Math.max(0, parseInt(trialSaved, 10));
-            const ordersList = document.getElementById('ordersList');
-            const clearBtn = document.getElementById('clearHistoryBtn');
+    <script src="account.js" defer></script>
 
-            function render() {
-                const orders = JSON.parse(localStorage.getItem('mirror_translator_orders') || '[]');
-                document.getElementById('accOrdersCount').textContent = orders.length;
-                if (!orders.length) {
-                    clearBtn.classList.add('hidden');
-                    ordersList.innerHTML = '<p class="text-sm text-[var(--text-muted)]">Заявок пока нет.</p>';
-                    return;
-                }
-                clearBtn.classList.remove('hidden');
-                ordersList.innerHTML = [...orders].reverse().map(o => `
-                    <div class="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--surface-alt)]">
-                        <div class="flex justify-between font-bold text-sm">
-                            <span class="text-[var(--primary-color)]">#${o.id}</span>
-                            <span class="mk-pill">${o.status || 'Новая'}</span>
-                        </div>
-                        <p class="mt-1 font-semibold">${o.service} (${o.lang})</p>
-                        <p class="text-sm text-[var(--text-muted)]">Объём: ${o.chars} симв. · Оценка: ${o.estimate}</p>
-                    </div>
-                `).join('');
-            }
-            clearBtn.addEventListener('click', () => { localStorage.removeItem('mirror_translator_orders'); render(); });
-            render();
-        });
-    </script>
 </body>
 </html>

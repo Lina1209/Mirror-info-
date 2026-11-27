@@ -8,13 +8,8 @@
 
 ## Настройка
 
-1. Создайте Cloudflare Pages project, подключите `Lina1209/Mirror-info-`, production branch `main`, build command оставьте пустым, build output directory — `.`. В корне есть `wrangler.toml`; замените там `REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID` на ID созданной D1 базы.
-2. Создайте D1 database `mirror-info-orders`, примените схему из корня репозитория:
-   ```sh
-   npx wrangler d1 create mirror-info-orders
-   npx wrangler d1 execute mirror-info-orders --remote --file=./schema.sql
-   ```
-   В Cloudflare Pages settings проверьте D1 binding с именем `DB` и той же базой. После изменения binding/config выполните новый deploy.
+1. Создайте Cloudflare Pages project и подключите `Lina1209/Mirror-info-`; production branch — `main`, build command — пустой, build output directory — `.`. Перед настройкой проверьте существующий Pages project и не создавайте второй без необходимости.
+2. Сверьте `wrangler.toml` с уже существующей D1 database в Cloudflare: `binding = "DB"`, `database_name` и `database_id` должны указывать на одну и ту же базу. Имя и ID в панели Cloudflare — источник истины. Если база уже существует, **не запускайте `wrangler d1 create` повторно** и не создавайте новую базу только из-за несовпадения старой инструкции. Перед применением `schema.sql` проверьте список таблиц и сделайте резервную копию; применяйте схему только к нужной базе и только если соответствующие таблицы ещё отсутствуют. После отдельного согласованного изменения binding/config потребуется новый deploy.
 3. В Pages → Settings → Variables and Secrets добавьте секреты/переменные:
    - `TELEGRAM_BOT_TOKEN` (secret) и `TELEGRAM_CHAT_ID` (secret), чтобы получать заявки в Telegram; создайте бота и сначала отправьте ему сообщение, чтобы определить chat ID.
    - либо `RESEND_API_KEY` (secret), `ORDER_EMAIL_TO` и `ORDER_EMAIL_FROM` для email через Resend. Адрес отправителя должен быть подтверждён в Resend.
@@ -33,7 +28,7 @@
 
 ## Безопасность и ограничения
 
-- Старый пароль `Lina1209` удалён из админского клиентского кода; используйте Cloudflare Access identity policies. Доступ защищён и для страницы, и для API, а JWT проверяется серверной функцией.
+- Старый пароль `Lina1209` удалён из админского клиентского кода; используйте Cloudflare Access identity policies. Админский API проверяет подпись и claims JWT. Endpoint `/api/admin/telegram-chat-id` использует ту же общую проверку, что и `/api/admin/orders`; одного факта наличия заголовка недостаточно.
 - Заказы сохраняются в D1. Уведомления не содержат секретов; при временном сбое каналов запись остаётся в админке.
 - Включите MFA у провайдера учётных записей Cloudflare Access и ограничьте доступ точными email. Периодически меняйте Telegram/Resend credentials.
 - Не храните лишние персональные данные, настройте срок хранения/удаления заявок и разместите на сайте политику конфиденциальности. Учитывайте требования применимого законодательства о персональных данных.

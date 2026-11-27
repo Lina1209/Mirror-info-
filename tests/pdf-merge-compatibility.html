@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mirror Info — PDF merge compatibility spike</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;max-width:850px;margin:32px auto;padding:0 16px;color:#202633}
+    button{padding:12px 18px;border:0;border-radius:8px;background:#315c86;color:white;font-weight:600}
+    pre{white-space:pre-wrap;background:#f2f4f7;padding:16px;border-radius:8px;min-height:120px}
+    .note{background:#fff8e8;padding:12px 16px;border-left:4px solid #d69b28}
+  </style>
+</head>
+<body>
+  <h1>PDF merge compatibility spike</h1>
+  <p>Изолированный ручной тест. Не подключён к приложению и не меняет текущий лимит перевода.</p>
+  <p class="note">Проверяет две независимо созданные PDF-части: количество страниц, геометрию A4/альбомной страницы, внешние и внутренние ссылки, метаданные и повторное открытие результата PDF.js. Не является тестом больших файлов или Cloudflare Workers.</p>
+  <button id="run">Запустить тест</button>
+  <pre id="log" aria-live="polite">Ожидание запуска…</pre>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";</script>
+  <script>
+    (function () {
+      const log = document.getElementById('log');
+      const button = document.getElementById('run');
+      const lines = [];
+      function report(message) { lines.push(message); log.textContent = lines.join('\n'); }
+      function assert(condition, message) {
+        if (!condition) throw new Error('FAIL: ' + message);
+        report('PASS: ' + message);
+      }
+      function makeBatch(label, title) {
+        const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4', compress: true });
+        doc.setProperties({ title, subject: 'Mirror Info PDF merge test', author: 'Mirror Info' });
+        doc.setFontSize(18);
+        doc.text(label + ' — page 1', 48, 60);
+        doc.text('External link', 48, 100);
+        doc.link(45, 82, 110, 26, { url: 'https://example.com/' + label.toLowerCase() });
+        doc.text('Internal link to page 2', 48, 145);
+        doc.link(45, 127, 180, 26, { pageNumber: 2 });
+        doc.addPage('a4', 'landscape');
+        doc.text(label + ' — page 2 (landscape)', 48, 60);
+        return doc.output('arraybuffer');
+      }
+      function addOutlineEntry(document, rootRef, previousTopRef, title, childTitle, topTargetRef, childTargetRef) {
+        const { PDFDict, PDFName, PDFArray, PDFString, PDFNumber } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const destination = pageRef => {
+          const array = PDFArray.withContext(context);
+          array.push(pageRef);
+          array.push(name('Fit'));
+          return context.register(array);
+        };
+        const root = context.lookup(rootRef);
+        const top = PDFDict.withContext(context);
+        const topRef = context.register(top);
+        top.set(name('Title'), PDFString.of(title));
+        top.set(name('Parent'), rootRef);
+        top.set(name('Dest'), destination(topTargetRef));
+        top.set(name('Count'), PDFNumber.of(1));
+        if (previousTopRef) {
+          top.set(name('Prev'), previousTopRef);
+          context.lookup(previousTopRef).set(name('Next'), topRef);
+        } else {
+          root.set(name('First'), topRef);
+        }
+        const child = PDFDict.withContext(context);
+        const childRef = context.register(child);
+        child.set(name('Title'), PDFString.of(childTitle));
+        child.set(name('Parent'), topRef);
+        child.set(name('Dest'), destination(childTargetRef));
+        top.set(name('First'), childRef);
+        top.set(name('Last'), childRef);
+        top.set(name('Last'), childRef);
+        root.set(name('Last'), topRef);
+        return topRef;
+      }
+      function addHighlightAnnotation(document, page, contents) {
+        const { PDFDict, PDFName, PDFArray, PDFNumber, PDFString } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const numbers = values => {
+          const array = PDFArray.withContext(context);
+          values.forEach(value => array.push(PDFNumber.of(value)));
+          return array;
+        };
+        const annotation = PDFDict.withContext(context);
+        annotation.set(name('Type'), name('Annot'));
+        annotation.set(name('Subtype'), name('Highlight'));
+        annotation.set(name('Rect'), numbers([45, 245, 260, 270]));
+        annotation.set(name('QuadPoints'), numbers([45, 270, 260, 270, 45, 245, 260, 245]));
+        annotation.set(name('Contents'), PDFString.of(contents));
+        annotation.set(name('C'), numbers([1, 1, 0]));
+        annotation.set(name('T'), PDFString.of('Lina Test Author'));
+        annotation.set(name('M'), PDFString.of('D:20261127100000Z'));
+        annotation.set(name('NM'), PDFString.of('batch-a-highlight-001'));
+        annotation.set(name('F'), PDFNumber.of(4));
+        annotation.set(name('CA'), PDFNumber.of(0.65));
+        page.node.addAnnot(context.register(annotation));
+      }
+      function readRawAnnotationContents(document, page, subtype) {
+        const { PDFName, PDFString } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return [];
+        const values = [];
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const kind = annotation.get(PDFName.of('Subtype'));
+          if (!kind || kind.toString() !== '/' + subtype) continue;
+          const raw = annotation.get(PDFName.of('Contents'));
+          values.push(raw instanceof PDFString ? raw.decodeText() : null);
+        }
+        return values;
+      }
+      function readRawAnnotationNumbers(document, page, subtype, key) {
+        const { PDFName, PDFNumber } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return [];
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const kind = annotation.get(PDFName.of('Subtype'));
+          if (!kind || kind.toString() !== '/' + subtype) continue;
+          const raw = annotation.get(PDFName.of(key));
+          if (!raw || typeof raw.size !== 'function') return [];
+          const values = [];
+          for (let item = 0; item < raw.size(); item += 1) {
+            const value = document.context.lookup(raw.get(item));
+            if (!(value instanceof PDFNumber)) return [];
+            values.push(value.asNumber());
+          }
+          return values;
+        }
+        return [];
+      }
+      function readRawAnnotationScalar(document, page, subtype, key) {
+        const { PDFName, PDFString, PDFNumber } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const kind = annotation.get(PDFName.of('Subtype'));
+          if (!kind || kind.toString() !== '/' + subtype) continue;
+          const raw = annotation.get(PDFName.of(key));
+          if (raw instanceof PDFString) return raw.decodeText();
+          if (raw instanceof PDFNumber) return raw.asNumber();
+          return null;
+        }
+        return null;
+      }
+      function addNormalAppearance(document, annotation, fillColor) {
+        const { PDFDict, PDFName, PDFArray, PDFNumber, PDFRawStream } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const bbox = PDFArray.withContext(context);
+        [0, 0, 18, 18].forEach(value => bbox.push(PDFNumber.of(value)));
+        const streamDict = PDFDict.withContext(context);
+        streamDict.set(name('Type'), name('XObject'));
+        streamDict.set(name('Subtype'), name('Form'));
+        streamDict.set(name('FormType'), PDFNumber.of(1));
+        streamDict.set(name('BBox'), bbox);
+        streamDict.set(name('Resources'), PDFDict.withContext(context));
+        const stream = PDFRawStream.of(streamDict, new TextEncoder().encode('q ' + fillColor + ' rg 1 1 16 16 re f Q'));
+        const appearanceRef = context.register(stream);
+        const normalAppearance = PDFDict.withContext(context);
+        normalAppearance.set(name('N'), appearanceRef);
+        const appearance = PDFDict.withContext(context);
+        appearance.set(name('AP'), normalAppearance);
+        annotation.set(name('AP'), normalAppearance);
+        return appearanceRef;
+      }
+      function addStatefulAppearanceAnnotation(document, page, selectedState = 'On') {
+        const { PDFDict, PDFName, PDFArray, PDFNumber, PDFRawStream } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        if (selectedState !== 'On' && selectedState !== 'Off') throw new Error('Unsupported fixture appearance state');
+        const annotation = PDFDict.withContext(context);
+        annotation.set(name('Type'), name('Annot'));
+        annotation.set(name('Subtype'), name('Stamp'));
+        const rect = PDFArray.withContext(context);
+        const left = selectedState === 'On' ? 300 : 350;
+        [left, 215, left + 40, 255].forEach(value => rect.push(PDFNumber.of(value)));
+        annotation.set(name('Rect'), rect);
+        annotation.set(name('AS'), name(selectedState));
+        const makeStream = fill => {
+          const bbox = PDFArray.withContext(context);
+          [0, 0, 40, 40].forEach(value => bbox.push(PDFNumber.of(value)));
+          const dict = PDFDict.withContext(context);
+          dict.set(name('Type'), name('XObject'));
+          dict.set(name('Subtype'), name('Form'));
+          dict.set(name('FormType'), PDFNumber.of(1));
+          dict.set(name('BBox'), bbox);
+          dict.set(name('Resources'), PDFDict.withContext(context));
+          return context.register(PDFRawStream.of(dict, new TextEncoder().encode('q ' + fill + ' rg 2 2 36 36 re f Q')));
+        };
+        const states = PDFDict.withContext(context);
+        states.set(name('On'), makeStream('0 0.6 0'));
+        states.set(name('Off'), makeStream('0.5 0.5 0.5'));
+        const appearance = PDFDict.withContext(context);
+        appearance.set(name('N'), states);
+        annotation.set(name('AP'), appearance);
+        page.node.addAnnot(context.register(annotation));
+      }
+      function hasStatefulAppearance(document, page, selectedState = 'On') {
+        const { PDFName, PDFDict, PDFRawStream } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return false;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const subtype = annotation.get(PDFName.of('Subtype'));
+          if (!subtype || subtype.toString() !== '/Stamp') continue;
+          const state = annotation.get(PDFName.of('AS'));
+          if (!state || state.toString() !== '/' + selectedState) continue;
+          const apRef = annotation.get(PDFName.of('AP'));
+          if (!apRef) return false;
+          const ap = document.context.lookup(apRef);
+          const normalRef = ap.get(PDFName.of('N'));
+          if (!normalRef) return false;
+          const normal = document.context.lookup(normalRef);
+          if (!(normal instanceof PDFDict)) return false;
+          const onRef = normal.get(PDFName.of('On'));
+          const offRef = normal.get(PDFName.of('Off'));
+          if (!onRef || !offRef) return false;
+          const on = document.context.lookup(onRef);
+          const off = document.context.lookup(offRef);
+          const selected = document.context.lookup(normal.get(PDFName.of(selectedState)));
+          return on instanceof PDFRawStream && off instanceof PDFRawStream
+            && on.contents.length > 0 && off.contents.length > 0
+            && selected instanceof PDFRawStream && selected.contents.length > 0;
+        }
+        return false;
+      }
+      function hasNormalAppearance(document, page, subtype) {
+        const { PDFName, PDFRawStream } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return false;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const kind = annotation.get(PDFName.of('Subtype'));
+          if (!kind || kind.toString() !== '/' + subtype) continue;
+          const ap = annotation.get(PDFName.of('AP'));
+          if (!ap) return false;
+          const appearanceDict = document.context.lookup(ap);
+          const normal = appearanceDict.get(PDFName.of('N'));
+          if (!normal) return false;
+          const stream = document.context.lookup(normal);
+          const bbox = stream instanceof PDFRawStream ? stream.dict.get(PDFName.of('BBox')) : null;
+          const streamText = stream instanceof PDFRawStream ? new TextDecoder().decode(stream.contents) : '';
+          return stream instanceof PDFRawStream
+            && stream.contents.length > 0
+            && bbox && bbox.size() === 4
+            && streamText.includes('0.15 0.35 0.75 rg');
+        }
+        return false;
+      }
+      function addMarkupAnnotation(document, page, subtype, contents) {
+        const { PDFDict, PDFName, PDFArray, PDFNumber, PDFString } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const numbers = values => {
+          const array = PDFArray.withContext(context);
+          values.forEach(value => array.push(PDFNumber.of(value)));
+          return array;
+        };
+        const annotation = PDFDict.withContext(context);
+        annotation.set(name('Type'), name('Annot'));
+        annotation.set(name('Subtype'), name(subtype));
+        annotation.set(name('Rect'), numbers([45, 215, 260, 240]));
+        if (subtype === 'Underline' || subtype === 'StrikeOut') {
+          annotation.set(name('QuadPoints'), numbers([45, 240, 260, 240, 45, 215, 260, 215]));
+        }
+        annotation.set(name('Contents'), PDFString.of(contents));
+        if (subtype === 'Text') annotation.set(name('Name'), name('Comment'));
+        if (subtype === 'Text') addNormalAppearance(document, annotation, '0.15 0.35 0.75');
+        page.node.addAnnot(context.register(annotation));
+      }
+      function addPopupForTextAnnotation(document, page) {
+        const { PDFDict, PDFName, PDFArray, PDFNumber, PDFBool } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const annots = page.node.Annots();
+        if (!annots) throw new Error('Text annotation missing for popup fixture');
+        let parentRef = null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const ref = annots.get(index);
+          const annotation = context.lookup(ref);
+          const subtype = annotation.get(name('Subtype'));
+          if (subtype && subtype.toString() === '/Text') { parentRef = ref; break; }
+        }
+        if (!parentRef) throw new Error('Text annotation missing for popup fixture');
+        const popup = PDFDict.withContext(context);
+        const rect = PDFArray.withContext(context);
+        [270, 215, 420, 330].forEach(value => rect.push(PDFNumber.of(value)));
+        popup.set(name('Type'), name('Annot'));
+        popup.set(name('Subtype'), name('Popup'));
+        popup.set(name('Rect'), rect);
+        popup.set(name('Parent'), parentRef);
+        popup.set(name('Open'), PDFBool.False);
+        const popupRef = context.register(popup);
+        context.lookup(parentRef).set(name('Popup'), popupRef);
+        page.node.addAnnot(popupRef);
+      }
+      function addReplyForTextAnnotation(document, page) {
+        const { PDFDict, PDFName, PDFString } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const annots = page.node.Annots();
+        if (!annots) throw new Error('Text annotation missing for reply fixture');
+        let parentRef = null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const ref = annots.get(index);
+          const annotation = context.lookup(ref);
+          const subtype = annotation.get(name('Subtype'));
+          if (subtype && subtype.toString() === '/Text') { parentRef = ref; break; }
+        }
+        if (!parentRef) throw new Error('Text annotation missing for reply fixture');
+        const reply = PDFDict.withContext(context);
+        reply.set(name('Type'), name('Annot'));
+        reply.set(name('Subtype'), name('Text'));
+        reply.set(name('Rect'), context.lookup(parentRef).get(name('Rect')));
+        reply.set(name('Contents'), PDFString.of('Batch A reply comment'));
+        reply.set(name('IRT'), parentRef);
+        reply.set(name('RT'), name('R'));
+        page.node.addAnnot(context.register(reply));
+      }
+      function hasTextReply(document, page) {
+        const { PDFName, PDFString } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return false;
+        let parentRef = null;
+        let replyRef = null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const ref = annots.get(index);
+          const annotation = document.context.lookup(ref);
+          const subtype = annotation.get(PDFName.of('Subtype'));
+          const contents = annotation.get(PDFName.of('Contents'));
+          if (subtype && subtype.toString() === '/Text' && contents instanceof PDFString && contents.decodeText() === 'Batch A sticky note') parentRef = ref;
+          if (subtype && subtype.toString() === '/Text' && contents instanceof PDFString && contents.decodeText() === 'Batch A reply comment') replyRef = { ref, annotation };
+        }
+        if (!parentRef || !replyRef) return false;
+        const target = replyRef.annotation.get(PDFName.of('IRT'));
+        const replyType = replyRef.annotation.get(PDFName.of('RT'));
+        return Boolean(target && target.toString() === parentRef.toString() && replyType && replyType.toString() === '/R');
+      }
+      function hasLinkedPopup(document, page) {
+        const { PDFName } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return false;
+        let popupRef = null;
+        let parentRef = null;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const ref = annots.get(index);
+          const annotation = document.context.lookup(ref);
+          const subtype = annotation.get(PDFName.of('Subtype'));
+          if (subtype && subtype.toString() === '/Popup') {
+            popupRef = ref;
+            parentRef = annotation.get(PDFName.of('Parent'));
+          }
+        }
+        if (!popupRef || !parentRef) return false;
+        const parent = document.context.lookup(parentRef);
+        const parentSubtype = parent.get(PDFName.of('Subtype'));
+        const backReference = parent.get(PDFName.of('Popup'));
+        return Boolean(parentSubtype && parentSubtype.toString() === '/Text' && backReference && backReference.toString() === popupRef.toString());
+      }
+      function hasPopupGeometry(document, page) {
+        const { PDFName, PDFArray, PDFNumber } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return false;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const subtype = annotation.get(PDFName.of('Subtype'));
+          if (!subtype || subtype.toString() !== '/Popup') continue;
+          const rect = document.context.lookup(annotation.get(PDFName.of('Rect')));
+          if (!(rect instanceof PDFArray) || rect.size() !== 4) return false;
+          const values = [];
+          for (let part = 0; part < 4; part += 1) {
+            const number = document.context.lookup(rect.get(part));
+            if (!(number instanceof PDFNumber)) return false;
+            values.push(number.asNumber());
+          }
+          const open = annotation.get(PDFName.of('Open'));
+          return values.join(',') === '270,215,420,330' && open && open.toString() === 'false';
+        }
+        return false;
+      }
+      function addNamedDestination(document, key, pageRef) {
+        const { PDFDict, PDFName, PDFArray, PDFString } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const destination = PDFArray.withContext(context);
+        destination.push(pageRef);
+        destination.push(name('Fit'));
+        const destinationRef = context.register(destination);
+        const namesArray = PDFArray.withContext(context);
+        namesArray.push(PDFString.of(key));
+        namesArray.push(destinationRef);
+        const destTree = PDFDict.withContext(context);
+        destTree.set(name('Names'), namesArray);
+        const destTreeRef = context.register(destTree);
+        const names = PDFDict.withContext(context);
+        names.set(name('Dests'), destTreeRef);
+        document.catalog.set(name('Names'), context.register(names));
+      }
+      function createOutlineRoot(document, chapterTitle, sectionTitle, chapterTargetRef, sectionTargetRef) {
+        const { PDFDict, PDFName, PDFArray, PDFString, PDFNumber } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const root = PDFDict.withContext(context);
+        root.set(name('Type'), name('Outlines'));
+        root.set(name('Count'), PDFNumber.of(2));
+        const rootRef = context.register(root);
+        const chapter = PDFDict.withContext(context);
+        const chapterRef = context.register(chapter);
+        chapter.set(name('Title'), PDFString.of(chapterTitle));
+        chapter.set(name('Parent'), rootRef);
+        chapter.set(name('Count'), PDFNumber.of(1));
+        const section = PDFDict.withContext(context);
+        const sectionRef = context.register(section);
+        section.set(name('Title'), PDFString.of(sectionTitle));
+        section.set(name('Parent'), chapterRef);
+        const makeDestination = pageRef => {
+          const dest = PDFArray.withContext(context);
+          dest.push(pageRef);
+          dest.push(name('Fit'));
+          return context.register(dest);
+        };
+        chapter.set(name('Dest'), makeDestination(chapterTargetRef));
+        section.set(name('Dest'), makeDestination(sectionTargetRef));
+        chapter.set(name('First'), sectionRef);
+        chapter.set(name('Last'), sectionRef);
+        root.set(name('First'), chapterRef);
+        root.set(name('Last'), chapterRef);
+        document.catalog.set(name('Outlines'), rootRef);
+        return rootRef;
+      }
+      async function inspectStampAppearancePixels(bytes) {
+        const task = window.pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
+        const pdf = await task.promise;
+        const page = await pdf.getPage(1);
+        const scale = 1.5;
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        await page.render({
+          canvasContext: context,
+          viewport,
+          annotationMode: window.pdfjsLib.AnnotationMode.ENABLE
+        }).promise;
+        const sample = (x, y) => {
+          const point = viewport.convertToViewportPoint(x, y);
+          const pixel = context.getImageData(Math.floor(point[0]), Math.floor(point[1]), 1, 1).data;
+          return { r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] };
+        };
+        const result = {
+          on: sample(320, 235),
+          off: sample(370, 235)
+        };
+        page.cleanup();
+        await pdf.destroy();
+        return result;
+      }
+      async function inspect(bytes) {
+        const task = window.pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
+        const pdf = await task.promise;
+        const pages = [];
+        const rotations = [];
+        const pageTexts = [];
+        let externalLinks = 0;
+        let internalLinks = 0;
+        const highlightContents = [];
+        const annotationSummary = [];
+        let resolvedInternalLinks = 0;
+        let brokenInternalLinks = 0;
+        const externalUrls = [];
+        const internalTargets = [];
+        for (let i = 1; i <= pdf.numPages; i += 1) {
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 1, rotation: 0 });
+          pages.push({ width: Math.round(viewport.width), height: Math.round(viewport.height) });
+          rotations.push(page.rotate);
+          const textContent = await page.getTextContent();
+          pageTexts.push(textContent.items.map(item => item.str).join(' '));
+          const annotations = await page.getAnnotations();
+          for (const annotation of annotations) {
+            annotationSummary.push({ pageIndex: i - 1, subtype: annotation.subtype || null, contents: annotation.contents || '', annotationType: annotation.annotationType || null });
+            if (annotation.subtype === 'Highlight') highlightContents.push(annotation.contents || '');
+            if (typeof annotation.url === 'string' && annotation.url.startsWith('https://')) {
+              externalLinks += 1;
+              externalUrls.push(annotation.url);
+            }
+            if (annotation.dest) {
+              internalLinks += 1;
+              try {
+                const destination = typeof annotation.dest === 'string'
+                  ? await pdf.getDestination(annotation.dest)
+                  : annotation.dest;
+                if (!Array.isArray(destination) || !destination[0]) throw new Error('Missing destination page reference');
+                const targetPageIndex = await pdf.getPageIndex(destination[0]);
+                internalTargets.push({ sourcePageIndex: i - 1, targetPageIndex });
+                resolvedInternalLinks += 1;
+              } catch (_) {
+                brokenInternalLinks += 1;
+              }
+            }
+          }
+          page.cleanup();
+        }
+        let formFieldCount = 0;
+        let formFieldInventory = [];
+        try {
+          const fields = await pdf.getFieldObjects();
+          formFieldInventory = fields ? Object.entries(fields).flatMap(([name, items]) => (items || []).map(field => ({ name, type: field.type ?? null, value: field.value ?? null }))) : [];
+          // PDF.js can expose intermediate non-terminal field nodes as well
+          // as the terminal field and its widget. Count unique typed fields,
+          // not every object returned for a dotted field name.
+          formFieldCount = new Set(formFieldInventory.filter(field => field.type).map(field => field.name)).size;
+        } catch (_) {}
+        const outline = await pdf.getOutline();
+        const outlineTargets = [];
+        async function collectOutline(items, parentTitle) {
+          for (const item of items || []) {
+            let targetPageIndex = null;
+            try {
+              const destination = typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest;
+              if (Array.isArray(destination) && destination[0]) targetPageIndex = await pdf.getPageIndex(destination[0]);
+            } catch (_) {}
+            outlineTargets.push({ title: item.title, parentTitle: parentTitle || null, targetPageIndex });
+            await collectOutline(item.items, item.title);
+          }
+        }
+        await collectOutline(outline, null);
+        const namedDestinationTargets = [];
+        for (const destinationName of ['batch-a-chapter-start', 'batch-b-chapter-start']) {
+          try {
+            const destination = await pdf.getDestination(destinationName);
+            if (Array.isArray(destination) && destination[0]) {
+              namedDestinationTargets.push({ name: destinationName, targetPageIndex: await pdf.getPageIndex(destination[0]) });
+            }
+          } catch (_) {}
+        }
+        const metadata = await pdf.getMetadata();
+        await pdf.destroy();
+        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, outlineTargets, namedDestinationTargets, formFieldCount, formFieldInventory, highlightContents, annotationSummary, title: metadata.info && metadata.info.Title };
+      }
+      button.addEventListener('click', async function () {
+        lines.length = 0;
+        button.disabled = true;
+        try {
+          assert(!!window.jspdf && !!window.PDFLib && !!window.pdfjsLib, 'Pinned test libraries loaded (jsPDF 2.5.2, pdf-lib 1.17.1, PDF.js 3.11.174)');
+          const PDFName = window.PDFLib.PDFName;
+          const PDFDict = window.PDFLib.PDFDict;
+          const PDFNumber = window.PDFLib.PDFNumber;
+          const first = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-A', 'Mirror Info batch A'));
+          const second = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-B', 'Mirror Info batch B'));
+          // Exercise inherited PDF /Rotate entries and real source outline trees.
+          first.getPages()[1].setRotation(window.PDFLib.degrees(90));
+          second.getPages()[1].setRotation(window.PDFLib.degrees(270));
+          createOutlineRoot(first, 'Batch A chapter', 'Batch A section', first.getPages()[0].ref, first.getPages()[1].ref);
+          createOutlineRoot(second, 'Batch B chapter', 'Batch B section', second.getPages()[0].ref, second.getPages()[1].ref);
+          addNamedDestination(first, 'chapter-start', first.getPages()[0].ref);
+          addNamedDestination(second, 'chapter-start', second.getPages()[0].ref);
+          addHighlightAnnotation(first, first.getPages()[0], 'Batch A preserved highlight');
+          addHighlightAnnotation(second, second.getPages()[0], 'Batch B preserved highlight');
+          addStatefulAppearanceAnnotation(first, first.getPages()[0], 'On');
+          addStatefulAppearanceAnnotation(first, first.getPages()[0], 'Off');
+          addMarkupAnnotation(first, first.getPages()[0], 'Underline', 'Batch A underline note');
+          addMarkupAnnotation(first, first.getPages()[0], 'StrikeOut', 'Batch A strikeout note');
+          addMarkupAnnotation(first, first.getPages()[0], 'Text', 'Batch A sticky note');
+          addPopupForTextAnnotation(first, first.getPages()[0]);
+          addReplyForTextAnnotation(first, first.getPages()[0]);
+          assert(hasLinkedPopup(first, first.getPages()[0]), 'Source A text note and popup have reciprocal references');
+          assert(hasTextReply(first, first.getPages()[0]), 'Source A text reply points to its parent annotation');
+          assert(hasPopupGeometry(first, first.getPages()[0]), 'Source A popup rectangle and closed state are correct');
+          assert(hasNormalAppearance(first, first.getPages()[0], 'Text'), 'Source A text note has a normal appearance stream');
+          assert(hasStatefulAppearance(first, first.getPages()[0], 'On'), 'Source A active /On appearance state and both /N streams exist');
+          assert(hasStatefulAppearance(first, first.getPages()[0], 'Off'), 'Source A active /Off appearance state and both /N streams exist');
+          const sourceAInspection = await inspect(await first.save());
+          const sourceBInspection = await inspect(await second.save());
+          report('Source A annotation inventory: ' + JSON.stringify(sourceAInspection.annotationSummary));
+          report('Source B annotation inventory: ' + JSON.stringify(sourceBInspection.annotationSummary));
+          assert(readRawAnnotationContents(first, first.getPages()[0], 'Highlight').includes('Batch A preserved highlight'), 'Source A highlight Contents exists in the raw PDF annotation dictionary');
+          assert(JSON.stringify(readRawAnnotationNumbers(first, first.getPages()[0], 'Highlight', 'QuadPoints')) === JSON.stringify([45, 270, 260, 270, 45, 245, 260, 245]), 'Source A highlight QuadPoints fixture is correct');
+          assert(JSON.stringify(readRawAnnotationNumbers(first, first.getPages()[0], 'Highlight', 'C')) === JSON.stringify([1, 1, 0]), 'Source A highlight color fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'T') === 'Lina Test Author', 'Source A highlight author fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'M') === 'D:20261127100000Z', 'Source A highlight modification date fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'NM') === 'batch-a-highlight-001', 'Source A highlight unique annotation name fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'F') === 4, 'Source A highlight Print flag fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'CA') === 0.65, 'Source A highlight opacity fixture is correct');
+          assert(readRawAnnotationContents(second, second.getPages()[0], 'Highlight').includes('Batch B preserved highlight'), 'Source B highlight Contents exists in the raw PDF annotation dictionary');
+          for (const subtype of ['Underline', 'StrikeOut', 'Text']) {
+            assert(readRawAnnotationContents(first, first.getPages()[0], subtype).includes('Batch A ' + (subtype === 'Underline' ? 'underline' : subtype === 'StrikeOut' ? 'strikeout' : 'sticky note') + (subtype === 'Text' ? '' : ' note')), 'Source A ' + subtype + ' Contents exists in the raw PDF annotation dictionary');
+          }
+          const sourceForm = first.getForm();
+          const sourcePage = first.getPages()[0];
+          const sampleField = sourceForm.createTextField('batchA.sampleField');
+          sampleField.setText('Form value for merge test');
+          sampleField.addToPage(sourcePage, { x: 48, y: 190, width: 220, height: 24 });
+          const sourceCheckbox = sourceForm.createCheckBox('batchA.approved');
+          sourceCheckbox.check();
+          sourceCheckbox.addToPage(sourcePage, { x: 300, y: 190, width: 16, height: 16 });
+          const sourceRadio = sourceForm.createRadioGroup('batchA.delivery');
+          sourceRadio.addOptionToPage('express', sourcePage, { x: 300, y: 160, width: 16, height: 16 });
+          sourceRadio.addOptionToPage('standard', sourcePage, { x: 300, y: 138, width: 16, height: 16 });
+          sourceRadio.select('standard');
+          const sourceDropdown = sourceForm.createDropdown('batchA.language');
+          sourceDropdown.addOptions(['English', 'French', 'German']);
+          sourceDropdown.select('French');
+          sourceDropdown.addToPage(sourcePage, { x: 300, y: 105, width: 130, height: 22 });
+          const merged = await window.PDFLib.PDFDocument.create();
+          const mergedDestinationNames = [];
+          const outlineRoot = PDFDict.withContext(merged.context);
+          outlineRoot.set(PDFName.of('Type'), PDFName.of('Outlines'));
+          outlineRoot.set(PDFName.of('Count'), PDFNumber.of(4));
+          const outlineRootRef = merged.context.register(outlineRoot);
+          merged.catalog.set(PDFName.of('Outlines'), outlineRootRef);
+          let previousOutlineRef = null;
+          merged.setTitle('Mirror Info merged compatibility test');
+          merged.setAuthor('Mirror Info');
+          for (const source of [first, second]) {
+            const sourcePages = source.getPages();
+            const copied = await merged.copyPages(source, source.getPageIndices());
+            copied.forEach(page => merged.addPage(page));
+
+            // pdf-lib copies annotation objects but does not reliably remap
+            // GoTo destinations. Read each destination from the source
+            // annotation, then point the copied annotation at the matching
+            // page reference in the merged document.
+            const pageRefMap = new Map(
+              sourcePages.map((page, index) => [page.ref.toString(), copied[index].ref])
+            );
+            const sourceNamesRef = source.catalog.get(PDFName.of('Names'));
+            const sourceNames = sourceNamesRef && source.context.lookup(sourceNamesRef);
+            const sourceDestsRef = sourceNames && sourceNames.get(PDFName.of('Dests'));
+            const sourceDests = sourceDestsRef && source.context.lookup(sourceDestsRef);
+            const sourceNameArray = sourceDests && sourceDests.get(PDFName.of('Names'));
+            if (sourceNameArray) {
+              for (let nameIndex = 0; nameIndex + 1 < sourceNameArray.size(); nameIndex += 2) {
+                const originalName = sourceNameArray.get(nameIndex).decodeText();
+                const destinationArray = source.context.lookup(sourceNameArray.get(nameIndex + 1));
+                const originalTarget = destinationArray.get(0);
+                const mappedTarget = pageRefMap.get(originalTarget.toString());
+                if (mappedTarget) {
+                  const renamed = (source === first ? 'batch-a-' : 'batch-b-') + originalName;
+                  const rewritten = destinationArray.clone(merged.context);
+                  rewritten.set(0, mappedTarget);
+                  mergedDestinationNames.push({ name: renamed, destination: merged.context.register(rewritten) });
+                }
+              }
+            }
+            const sourceOutlineRootRef = source.catalog.get(PDFName.of('Outlines'));
+            const sourceOutlineRoot = source.context.lookup(sourceOutlineRootRef);
+            const sourceChapterRef = sourceOutlineRoot.get(PDFName.of('First'));
+            const sourceChapter = source.context.lookup(sourceChapterRef);
+            const sourceSectionRef = sourceChapter.get(PDFName.of('First'));
+            const sourceSection = source.context.lookup(sourceSectionRef);
+            const chapterTitle = sourceChapter.get(PDFName.of('Title')).decodeText();
+            const sectionTitle = sourceSection.get(PDFName.of('Title')).decodeText();
+            previousOutlineRef = addOutlineEntry(
+              merged,
+              outlineRootRef,
+              previousOutlineRef,
+              chapterTitle,
+              sectionTitle,
+              pageRefMap.get(sourcePages[0].ref.toString()),
+              pageRefMap.get(sourcePages[1].ref.toString())
+            );
+            for (let pageIndex = 0; pageIndex < sourcePages.length; pageIndex += 1) {
+              const sourceAnnots = sourcePages[pageIndex].node.Annots();
+              const copiedAnnots = copied[pageIndex].node.Annots();
+              if (!sourceAnnots || !copiedAnnots) continue;
+              const count = Math.min(sourceAnnots.size(), copiedAnnots.size());
+              for (let annotationIndex = 0; annotationIndex < count; annotationIndex += 1) {
+                const sourceAnnotation = source.context.lookup(sourceAnnots.get(annotationIndex));
+                const copiedAnnotation = merged.context.lookup(copiedAnnots.get(annotationIndex));
+                let sourceDestination = sourceAnnotation.get(PDFName.of('Dest'));
+                let copiedAction = copiedAnnotation.get(PDFName.of('A'));
+                let sourceAction = sourceAnnotation.get(PDFName.of('A'));
+                let destinationInAction = false;
+                if (!(sourceDestination instanceof window.PDFLib.PDFArray) && sourceAction) {
+                  sourceAction = source.context.lookup(sourceAction);
+                  const actionType = sourceAction.get(PDFName.of('S'));
+                  if (actionType && actionType.toString() === '/GoTo') {
+                    sourceDestination = sourceAction.get(PDFName.of('D'));
+                    destinationInAction = true;
+                  }
+                }
+                if (sourceDestination instanceof window.PDFLib.PDFString) {
+                  const originalName = sourceDestination.decodeText();
+                  const renamed = (source === first ? 'batch-a-' : 'batch-b-') + originalName;
+                  const copiedName = window.PDFLib.PDFString.of(renamed);
+                  if (destinationInAction && copiedAction) {
+                    copiedAction = merged.context.lookup(copiedAction);
+                    copiedAction.set(PDFName.of('D'), copiedName);
+                  } else {
+                    copiedAnnotation.set(PDFName.of('Dest'), copiedName);
+                  }
+                  continue;
+                }
+                if (!(sourceDestination instanceof window.PDFLib.PDFArray)) continue;
+                const originalTarget = sourceDestination.get(0);
+                const mappedTarget = pageRefMap.get(originalTarget.toString());
+                if (!mappedTarget) continue;
+                const rewrittenDestination = sourceDestination.clone(merged.context);
+                rewrittenDestination.set(0, mappedTarget);
+                if (destinationInAction && copiedAction) {
+                  copiedAction = merged.context.lookup(copiedAction);
+                  copiedAction.set(PDFName.of('D'), rewrittenDestination);
+                } else {
+                  copiedAnnotation.set(PDFName.of('Dest'), rewrittenDestination);
+                }
+              }
+            }
+          }
+          if (mergedDestinationNames.length) {
+            const namesArray = window.PDFLib.PDFArray.withContext(merged.context);
+            for (const entry of mergedDestinationNames) {
+              namesArray.push(window.PDFLib.PDFString.of(entry.name));
+              namesArray.push(entry.destination);
+            }
+            const destTree = window.PDFLib.PDFDict.withContext(merged.context);
+            destTree.set(PDFName.of('Names'), namesArray);
+            const names = window.PDFLib.PDFDict.withContext(merged.context);
+            names.set(PDFName.of('Dests'), merged.context.register(destTree));
+            merged.catalog.set(PDFName.of('Names'), merged.context.register(names));
+          }
+          const output = await merged.save({ useObjectStreams: true });
+          const result = await inspect(output);
+          assert(result.pages.length === 4, 'Four pages survive a two-batch merge');
+          assert(result.pages[0].width < result.pages[0].height, 'A4 portrait source page geometry is preserved');
+          assert(result.pages[1].width > result.pages[1].height && result.pages[3].width > result.pages[3].height, 'Both landscape page geometries are preserved');
+          assert(result.pages[2].width < result.pages[2].height, 'Second batch portrait page geometry is preserved');
+          assert(result.rotations[1] === 90 && result.rotations[3] === 270, 'Page rotation entries survive copying and merging');
+          assert(result.pageTexts[0].includes('BATCH-A') && result.pageTexts[1].includes('BATCH-A') && result.pageTexts[2].includes('BATCH-B') && result.pageTexts[3].includes('BATCH-B'), 'Text content remains extractable on all four merged pages');
+          assert(result.externalLinks >= 2, 'External URI link annotations survive from both batches');
+          assert(result.internalLinks >= 2, 'Internal link annotations remain present in the merged output');
+          assert(result.resolvedInternalLinks === 2 && result.brokenInternalLinks === 0, 'Both internal links resolve without broken destinations');
+          report('Internal targets observed (zero-based): ' + JSON.stringify(result.internalTargets));
+          const targetBySource = new Map(result.internalTargets.map(link => [link.sourcePageIndex, link.targetPageIndex]));
+          assert(targetBySource.get(0) === 1 && targetBySource.get(2) === 3, 'Internal links point to the correct page within each merged batch (page 2 and page 4)');
+          assert(result.externalUrls.includes('https://example.com/batch-a') && result.externalUrls.includes('https://example.com/batch-b'), 'Both batch external link targets are retained');
+          assert(result.title === 'Mirror Info merged compatibility test', 'Merged PDF metadata can be written and read back');
+          report('AcroForm field count after copyPages merge: ' + result.formFieldCount);
+          assert(result.formFieldCount === 0, 'Known limitation is explicit: copyPages does not preserve the document-level AcroForm field tree');
+          const sourceTextFields = sourceForm.getFields().filter(field => typeof field.getText === 'function');
+          assert(sourceTextFields.length === 1, 'Synthetic source contains one supported text field for reconstruction');
+          const sourceTextField = sourceTextFields[0];
+          const sourceWidgets = sourceTextField.acroField.getWidgets();
+          assert(sourceWidgets.length === 1, 'Synthetic source text field has one widget');
+          const sourceWidget = sourceWidgets[0];
+          const sourceWidgetPageRef = sourceWidget.dict.get(PDFName.of('P'));
+          const sourceWidgetPageIndex = first.getPages().findIndex(page => sourceWidgetPageRef && page.ref && page.ref.toString() === sourceWidgetPageRef.toString());
+          assert(sourceWidgetPageIndex === 0, 'Source widget points to the expected first page');
+          const sourceWidgetRect = sourceWidget.getRectangle();
+          report('Source text field geometry: ' + JSON.stringify(sourceWidgetRect));
+          const reconstructedForm = merged.getForm();
+          const sourceFieldName = sourceTextField.getName();
+          const batchPrefix = 'batch-a';
+          const namespacedFieldName = sourceFieldName.startsWith(batchPrefix + '.') ? sourceFieldName : batchPrefix + '.' + sourceFieldName;
+          const reconstructedField = reconstructedForm.createTextField(namespacedFieldName);
+          const sourceFieldValue = sourceTextField.getText();
+          if (sourceFieldValue !== undefined && sourceFieldValue !== null) reconstructedField.setText(sourceFieldValue);
+          reconstructedField.addToPage(merged.getPage(sourceWidgetPageIndex), {
+            x: sourceWidgetRect.x,
+            y: sourceWidgetRect.y,
+            width: sourceWidgetRect.width,
+            height: sourceWidgetRect.height
+          });
+          const reconstructedOutput = await merged.save({ useObjectStreams: true });
+          const reconstructedInspection = await inspect(reconstructedOutput);
+          report('Reconstructed AcroForm inventory: ' + JSON.stringify(reconstructedInspection.formFieldInventory));
+          assert(reconstructedInspection.formFieldCount === 1, 'Reconstructed text field is present in the merged AcroForm field tree');
+          assert(reconstructedInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.sampleField' && field.type === 'text' && field.value === 'Form value for merge test'), 'Reconstructed text field retains its unique namespaced name, text type, and value');
+
+          // Rebuild a checked checkbox using its source state and widget box.
+          const sourceCheckboxWidget = sourceCheckbox.acroField.getWidgets()[0];
+          const checkboxRect = sourceCheckboxWidget.getRectangle();
+          const reconstructedCheckbox = reconstructedForm.createCheckBox('batch-a.batchA.approved');
+          reconstructedCheckbox.addToPage(merged.getPage(0), checkboxRect);
+          if (sourceCheckbox.isChecked()) reconstructedCheckbox.check();
+          else reconstructedCheckbox.uncheck();
+          reconstructedCheckbox.updateAppearances();
+
+          // Rebuild each radio option as a new widget and restore the selected value.
+          const sourceRadioWidgets = sourceRadio.acroField.getWidgets();
+          const reconstructedRadio = reconstructedForm.createRadioGroup('batch-a.batchA.delivery');
+          for (const widget of sourceRadioWidgets) {
+            const onValue = widget.getOnValue();
+            const option = onValue ? onValue.toString().substring(1) : null;
+            if (option) reconstructedRadio.addOptionToPage(option, merged.getPage(0), widget.getRectangle());
+          }
+          const selectedRadio = sourceRadio.getSelected();
+          const sourceRadioOptions = sourceRadio.getOptions();
+          assert(sourceRadioOptions.length === sourceRadioWidgets.length, 'Source radio option names map one-to-one to widgets');
+          const selectedRadioIndex = selectedRadio ? sourceRadioOptions.indexOf(selectedRadio) : -1;
+          const selectedMergedRadioOption = selectedRadioIndex >= 0
+            ? sourceRadioWidgets[selectedRadioIndex].getOnValue().toString().substring(1)
+            : null;
+          if (selectedMergedRadioOption) reconstructedRadio.select(selectedMergedRadioOption);
+
+          // Rebuild a dropdown's option set, selection, and widget rectangle.
+          const sourceDropdownWidget = sourceDropdown.acroField.getWidgets()[0];
+          const reconstructedDropdown = reconstructedForm.createDropdown('batch-a.batchA.language');
+          reconstructedDropdown.addOptions(sourceDropdown.getOptions());
+          const selectedDropdown = sourceDropdown.getSelected();
+          if (selectedDropdown && selectedDropdown.length) reconstructedDropdown.select(selectedDropdown[0]);
+          reconstructedDropdown.addToPage(merged.getPage(0), sourceDropdownWidget.getRectangle());
+
+          const allFormsOutput = await merged.save({ useObjectStreams: true });
+          const allFormsInspection = await inspect(allFormsOutput);
+          report('Reconstructed all-form inventory: ' + JSON.stringify(allFormsInspection.formFieldInventory));
+          assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.approved' && field.value !== null && field.value !== 'Off'), 'Reconstructed checkbox retains its checked state');
+          assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.delivery' && field.value === '1'), 'Reconstructed radio group retains the second selected widget option corresponding to source selection standard');
+          assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.language' && field.value === 'French'), 'Reconstructed dropdown retains its selected option');
+          report('Merged annotation inventory: ' + JSON.stringify(result.annotationSummary));
+          report('Detected highlight contents: ' + JSON.stringify(result.highlightContents));
+          assert(result.annotationSummary.filter(item => item.subtype === 'Highlight').length === 2, 'Both text highlight annotation objects survive the merge');
+          for (const subtype of ['Underline', 'StrikeOut', 'Text']) {
+            assert(result.annotationSummary.some(item => item.subtype === subtype), subtype + ' annotation object survives the merge');
+          }
+          const mergedHighlightContents = readRawAnnotationContents(merged, merged.getPages()[0], 'Highlight');
+          report('Merged raw Highlight Contents: ' + JSON.stringify(mergedHighlightContents));
+          assert(mergedHighlightContents.includes('Batch A preserved highlight'), 'Batch A highlight Contents survive in the merged raw annotation dictionary');
+          assert(JSON.stringify(readRawAnnotationNumbers(merged, merged.getPages()[0], 'Highlight', 'QuadPoints')) === JSON.stringify([45, 270, 260, 270, 45, 245, 260, 245]), 'Batch A highlight QuadPoints survive the merge unchanged');
+          assert(JSON.stringify(readRawAnnotationNumbers(merged, merged.getPages()[0], 'Highlight', 'C')) === JSON.stringify([1, 1, 0]), 'Batch A highlight color survives the merge unchanged');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'T') === 'Lina Test Author', 'Batch A highlight author survives the merge unchanged');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'M') === 'D:20261127100000Z', 'Batch A highlight modification date survives the merge unchanged');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'CA') === 0.65, 'Batch A highlight opacity survives the merge unchanged');
+          assert(JSON.stringify(readRawAnnotationNumbers(merged, merged.getPages()[0], 'Underline', 'QuadPoints')) === JSON.stringify([45, 240, 260, 240, 45, 215, 260, 215]), 'Underline QuadPoints survive the merge unchanged');
+          assert(JSON.stringify(readRawAnnotationNumbers(merged, merged.getPages()[0], 'StrikeOut', 'QuadPoints')) === JSON.stringify([45, 240, 260, 240, 45, 215, 260, 215]), 'StrikeOut QuadPoints survive the merge unchanged');
+          assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Underline').includes('Batch A underline note'), 'Underline Contents survive in the merged raw annotation dictionary');
+          assert(readRawAnnotationContents(merged, merged.getPages()[0], 'StrikeOut').includes('Batch A strikeout note'), 'StrikeOut Contents survive in the merged raw annotation dictionary');
+          assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Text').includes('Batch A sticky note'), 'Text note Contents survive in the merged raw annotation dictionary');
+          assert(hasLinkedPopup(merged, merged.getPages()[0]), 'Text note popup and reciprocal parent references survive the merge');
+          assert(hasTextReply(merged, merged.getPages()[0]), 'Text annotation reply relationship survives the merge');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'NM') === 'batch-a-highlight-001', 'Highlight unique annotation name survives the merge');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'F') === 4, 'Highlight Print flag survives the merge');
+          assert(hasPopupGeometry(merged, merged.getPages()[0]), 'Popup rectangle and closed state survive the merge unchanged');
+          assert(hasNormalAppearance(merged, merged.getPages()[0], 'Text'), 'Text note normal appearance stream survives the merge');
+          assert(hasStatefulAppearance(merged, merged.getPages()[0], 'On'), 'Active /On appearance state and both /N streams survive the merge');
+          assert(hasStatefulAppearance(merged, merged.getPages()[0], 'Off'), 'Active /Off appearance state and both /N streams survive the merge');
+          const renderedStampPixels = await inspectStampAppearancePixels(output);
+          report('Rendered stateful Stamp center pixels: ' + JSON.stringify(renderedStampPixels));
+          assert(renderedStampPixels.on.g > renderedStampPixels.on.r * 1.5 && renderedStampPixels.on.g > renderedStampPixels.on.b * 1.5, 'PDF.js canvas renders the selected /On stamp appearance as green');
+          assert(Math.abs(renderedStampPixels.off.r - renderedStampPixels.off.g) < 18 && Math.abs(renderedStampPixels.off.g - renderedStampPixels.off.b) < 18 && renderedStampPixels.off.r > 70, 'PDF.js canvas renders the selected /Off stamp appearance as neutral gray');
+          const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
+          assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
+          assert(namedTargets.get('batch-b-chapter-start') === 2, 'Batch B named destination resolves to merged page 3');
+          const outlineByTitle = new Map(result.outlineTargets.map(item => [item.title, item]));
+          assert(result.outlineTargets.length === 4, 'Both batches contribute parent and child PDF outline entries');
+          assert(outlineByTitle.get('Batch A chapter')?.targetPageIndex === 0 && outlineByTitle.get('Batch A section')?.targetPageIndex === 1, 'Batch A outline destinations map to merged pages 1 and 2');
+          assert(outlineByTitle.get('Batch B chapter')?.targetPageIndex === 2 && outlineByTitle.get('Batch B section')?.targetPageIndex === 3, 'Batch B outline destinations map to merged pages 3 and 4');
+          assert(result.outlineTargets.filter(item => item.parentTitle).length === 2, 'Nested PDF outline hierarchy survives merge');
+          report('RESULT: PASS — merged PDF reopened successfully with PDF.js.');
+          report('PDF outline targets: ' + JSON.stringify(result.outlineTargets));
+          report('Named destination targets: ' + JSON.stringify(result.namedDestinationTargets));
+          report('Merged AcroForm field count: ' + result.formFieldCount);
+          report('Merged highlight annotations: ' + JSON.stringify(result.highlightContents));
+          report('Page geometry: ' + JSON.stringify(result.pages));
+          report('Page rotations: ' + JSON.stringify(result.rotations));
+          report('Extracted text by page: ' + JSON.stringify(result.pageTexts));
+          report('Link counts: external=' + result.externalLinks + ', internal=' + result.internalLinks + ', resolved=' + result.resolvedInternalLinks + ', broken=' + result.brokenInternalLinks);
+          report('Internal targets (zero-based): ' + JSON.stringify(result.internalTargets));
+          report('NOTE: This is a small synthetic outline compatibility check only. It does not establish bounded memory, real-world PDF outline variants, forms, signatures, or Cloudflare runtime suitability.');
+          const blob = new Blob([output], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'mirror-info-merge-spike.pdf';
+          a.textContent = 'Скачать тестовый PDF';
+          a.style.display = 'inline-block';
+          a.style.marginTop = '12px';
+          document.body.appendChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (error) {
+          report('RESULT: FAIL — ' + (error && error.message ? error.message : String(error)));
+          console.error(error);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    }());
+  </script>
+</body>
+</html>
