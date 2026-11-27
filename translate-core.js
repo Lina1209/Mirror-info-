@@ -1537,7 +1537,7 @@
         throw new Error(label + ': после сборки изменился состав ZIP-пакета.');
       }
       // Изображения внутри вложенных XLSX/PPTX также остаются нетронутыми.
-      const originalMediaEntries = originalZip.file(/media\\//i).filter(entry => !entry.dir);
+      const originalMediaEntries = originalZip.file(/media\//i).filter(entry => !entry.dir);
       for (const mediaEntry of originalMediaEntries) {
         const rebuiltMedia = rebuiltZip.file(mediaEntry.name);
         if (!rebuiltMedia) {
@@ -1549,7 +1549,7 @@
           throw new Error(label + ': изменилось встроенное изображение ' + mediaEntry.name);
         }
       }
-      for (const relationship of originalZip.file(/\\.rels$/i)) {
+      for (const relationship of originalZip.file(/\.rels$/i)) {
         const rebuiltRelationship = rebuiltZip.file(relationship.name);
         if (!rebuiltRelationship) throw new Error(label + ': потеряна связь ' + relationship.name);
         const before = await relationship.async('uint8array');
