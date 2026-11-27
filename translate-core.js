@@ -1255,7 +1255,7 @@
             const localName = attribute.localName || attribute.name;
             // Эти атрибуты меняются только для перевода альтернативного текста
             // или корректного сохранения пробелов в текстовых узлах.
-            if (localName === 'title' || localName === 'descr') return false;
+            if (localName === 'title' || localName === 'descr' || localName === 'alt') return false;
             if (
               localName === 'space' &&
               attribute.namespaceURI === 'http://www.w3.org/XML/1998/namespace'
