@@ -488,7 +488,7 @@
           const reconstructedRadio = reconstructedForm.createRadioGroup('batch-a.batchA.delivery');
           for (const widget of sourceRadioWidgets) {
             const onValue = widget.getOnValue();
-            const option = onValue ? onValue.toString().replace(/^\\//, '') : null;
+            const option = onValue ? onValue.toString().substring(1) : null;
             if (option) reconstructedRadio.addOptionToPage(option, merged.getPage(0), widget.getRectangle());
           }
           const selectedRadio = sourceRadio.getSelected();
