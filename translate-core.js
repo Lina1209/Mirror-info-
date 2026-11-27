@@ -2547,7 +2547,7 @@
               result = packaged.text;
               asset = packaged.blob;
               setTranslatedAsset(asset, selectedFile, 'pdf');
-            } else if (selectedFile && ['jpg', 'jpeg', 'png'].includes(ext)) {
+            } else if (selectedFile && (selectedFile.type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'tif', 'tiff'].includes(ext))) {
               const translatedImage = await translateImageFile(selectedFile);
               result = translatedImage.text;
               asset = translatedImage.blob;
