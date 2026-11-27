@@ -1853,7 +1853,35 @@
     }
 
     const JSZip = await ensureJSZip();
-    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+
+    // EPUB требует, чтобы mimetype был первым локальным ZIP-элементом,
+    // хранился без сжатия и не имел дополнительного поля ZIP-заголовка.
+    // Проверяем реальные байты архива, а не только порядок записей JSZip.
+    function verifyEpubMimetypeHeader(buffer, label) {
+      const view = new DataView(buffer);
+      if (view.byteLength < 30 || view.getUint32(0, true) !== 0x04034b50) {
+        throw new Error(label + ': отсутствует корректный первый ZIP-заголовок.');
+      }
+      const compressionMethod = view.getUint16(8, true);
+      const fileNameLength = view.getUint16(26, true);
+      const extraLength = view.getUint16(28, true);
+      const headerEnd = 30 + fileNameLength + extraLength;
+      if (headerEnd > view.byteLength) {
+        throw new Error(label + ': повреждён заголовок первого ZIP-элемента.');
+      }
+      const firstName = new TextDecoder('utf-8').decode(
+        new Uint8Array(buffer, 30, fileNameLength)
+      );
+      if (firstName !== 'mimetype' || compressionMethod !== 0 || extraLength !== 0) {
+        throw new Error(
+          label + ': mimetype должен быть первым элементом ZIP, без сжатия и без дополнительного поля.'
+        );
+      }
+    }
+
+    const sourceArchiveBytes = await file.arrayBuffer();
+    verifyEpubMimetypeHeader(sourceArchiveBytes, 'Исходный EPUB');
+    const zip = await JSZip.loadAsync(sourceArchiveBytes);
     const epubFileNames = Object.keys(zip.files).filter(name => !zip.files[name].dir);
     if (epubFileNames[0] !== 'mimetype') {
       throw new Error('В EPUB файл mimetype должен быть первым элементом архива. Пересоберите EPUB стандартным экспортом книги.');
@@ -1982,7 +2010,9 @@
       compression: 'DEFLATE',
       compressionOptions: { level: 6 }
     });
-    const verifiedEpub = await JSZip.loadAsync(await blob.arrayBuffer());
+    const rebuiltArchiveBytes = await blob.arrayBuffer();
+    verifyEpubMimetypeHeader(rebuiltArchiveBytes, 'Собранный EPUB');
+    const verifiedEpub = await JSZip.loadAsync(rebuiltArchiveBytes);
     const verifiedNames = Object.keys(verifiedEpub.files).filter(name => !verifiedEpub.files[name].dir);
     if (
       verifiedNames[0] !== 'mimetype' ||
