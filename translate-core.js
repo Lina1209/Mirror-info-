@@ -1171,7 +1171,7 @@
     }
   }
 
-  async function translateDocxPackage(file) {
+  async function translateDocxPackage(file, nestingLevel = 0) {
     const JSZip = await ensureJSZip();
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
     const entries = zip.file(/^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/i).concat(zip.file(/^word\/glossary\/document\.xml$/i));
@@ -1316,6 +1316,24 @@
         nestedZip.file(nestedEntry.name, new XMLSerializer().serializeToString(doc));
       }
       zip.file(embedded.name, await nestedZip.generateAsync({ type: 'uint8array' }));
+    }
+
+    // Вложенные документы Word обрабатываем рекурсивно, ограничивая глубину.
+    const embeddedWordFiles = zip.file(/^word\/embeddings\/.*\.docx$/i);
+    for (const embedded of embeddedWordFiles) {
+      if (nestingLevel >= 3) {
+        previewParts.push('Вложенный DOCX пропущен: достигнуто ограничение глубины вложения.');
+        continue;
+      }
+      const nestedBlob = new Blob(
+        [await embedded.async('uint8array')],
+        { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
+      );
+      const nestedResult = await translateDocxPackage(nestedBlob, nestingLevel + 1);
+      zip.file(embedded.name, await nestedResult.blob.arrayBuffer());
+      if (nestedResult.text && !nestedResult.text.startsWith('В DOCX не найден')) {
+        previewParts.push(nestedResult.text);
+      }
     }
 
     const blob = await zip.generateAsync({
