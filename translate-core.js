@@ -1397,6 +1397,30 @@
       }
     }
 
+    async function verifyNestedPackage(originalZip, rebuiltBytes, label) {
+      const rebuiltZip = await JSZip.loadAsync(rebuiltBytes);
+      validatePackageLimits(rebuiltZip, label + ' после сборки');
+      const originalNames = Object.keys(originalZip.files).filter(name => !originalZip.files[name].dir);
+      const rebuiltNames = Object.keys(rebuiltZip.files).filter(name => !rebuiltZip.files[name].dir);
+      if (
+        originalNames.length !== rebuiltNames.length ||
+        originalNames.some(name => !rebuiltZip.file(name)) ||
+        rebuiltNames.some(name => !originalZip.file(name))
+      ) {
+        throw new Error(label + ': после сборки изменился состав ZIP-пакета.');
+      }
+      for (const relationship of originalZip.file(/\\.rels$/i)) {
+        const rebuiltRelationship = rebuiltZip.file(relationship.name);
+        if (!rebuiltRelationship) throw new Error(label + ': потеряна связь ' + relationship.name);
+        const before = await relationship.async('uint8array');
+        const after = await rebuiltRelationship.async('uint8array');
+        if (before.length !== after.length || before.some((byte, i) => byte !== after[i])) {
+          throw new Error(label + ': изменена связь ' + relationship.name);
+        }
+      }
+      return rebuiltZip;
+    }
+
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
     validatePackageLimits(zip, 'DOCX');
     // Фиксируем состав пакета и байты relationship-файлов: перевод не должен
@@ -1604,7 +1628,9 @@
         }
         nestedZip.file(nestedEntry.name, new XMLSerializer().serializeToString(doc));
       }
-      zip.file(embedded.name, await nestedZip.generateAsync({ type: 'uint8array' }));
+      const rebuiltNestedBytes = await nestedZip.generateAsync({ type: 'uint8array' });
+      await verifyNestedPackage(nestedZip, rebuiltNestedBytes, 'Вложенный пакет Office');
+      zip.file(embedded.name, rebuiltNestedBytes);
     }
 
     // Встроенные презентации PowerPoint: переводим текст слайдов,
