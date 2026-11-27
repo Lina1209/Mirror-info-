@@ -1339,9 +1339,18 @@
             if (typeof outputPdf.link === 'function') {
               for (const annotation of annotations) {
                 try {
-                  if (annotation?.subtype !== 'Link' || !Array.isArray(annotation.rect)) continue;
+                  if (
+                  annotation?.subtype !== 'Link' ||
+                  !Array.isArray(annotation.rect) ||
+                  annotation.rect.length !== 4 ||
+                  !annotation.rect.every(Number.isFinite)
+                ) continue;
                 const viewportRect = viewport.convertToViewportRectangle(annotation.rect);
-                if (!Array.isArray(viewportRect) || viewportRect.length !== 4) continue;
+                if (
+                  !Array.isArray(viewportRect) ||
+                  viewportRect.length !== 4 ||
+                  !viewportRect.every(Number.isFinite)
+                ) continue;
                 const left = Math.max(0, Math.min(pageWidth, Math.min(viewportRect[0], viewportRect[2]) * pointScaleX));
                 const top = Math.max(0, Math.min(pageHeight, Math.min(viewportRect[1], viewportRect[3]) * pointScaleY));
                 const right = Math.max(0, Math.min(pageWidth, Math.max(viewportRect[0], viewportRect[2]) * pointScaleX));
