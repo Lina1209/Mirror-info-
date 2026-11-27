@@ -1919,6 +1919,18 @@
     // гарантирует, что ZIP корректно сериализовался и читается после сборки.
     const verifiedZip = await JSZip.loadAsync(await blob.arrayBuffer());
     validatePackageLimits(verifiedZip, 'Собранный DOCX');
+    // Дополнительная проверка медиаданных после окончательной сериализации ZIP.
+    for (const [partName, originalBytes] of originalMediaParts) {
+      const verifiedMedia = verifiedZip.file(partName);
+      if (!verifiedMedia) {
+        throw new Error('После окончательной упаковки DOCX отсутствует изображение: ' + partName);
+      }
+      const finalBytes = await verifiedMedia.async('uint8array');
+      if (finalBytes.length !== originalBytes.length ||
+          finalBytes.some((byte, index) => byte !== originalBytes[index])) {
+        throw new Error('После окончательной упаковки DOCX изменилось изображение: ' + partName);
+      }
+    }
     const verifiedPartNames = Object.keys(verifiedZip.files).filter(name => !verifiedZip.files[name].dir);
     if (
       verifiedPartNames.length !== originalPartNames.length ||
