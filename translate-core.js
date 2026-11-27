@@ -2473,8 +2473,27 @@
       throw new Error('После сборки FB2 изменились встроенные изображения или обложка.');
     }
 
+    // Проверяем реальные байты Blob после UTF-8 кодирования.
+    const finalBlob = new Blob([updated], { type: 'application/x-fictionbook+xml;charset=utf-8' });
+    const finalXml = await finalBlob.text();
+    const finalDoc = new DOMParser().parseFromString(finalXml, 'application/xml');
+    if (finalDoc.querySelector('parsererror') ||
+        !finalDoc.documentElement || finalDoc.documentElement.localName !== 'FictionBook' ||
+        fb2StructureSignature(finalDoc) !== structureBefore) {
+      throw new Error('Проверка готового файла FB2 после кодирования выявила повреждение структуры.');
+    }
+    const finalBinaries = Array.from(finalDoc.getElementsByTagName('*'))
+      .filter(element => element.localName === 'binary')
+      .map(element => ({
+        attributes: Array.from(element.attributes || []).map(attribute => [attribute.name, attribute.value]),
+        content: element.textContent
+      }));
+    if (JSON.stringify(finalBinaries) !== JSON.stringify(binariesBefore)) {
+      throw new Error('В готовом файле FB2 после кодирования изменились обложка или встроенные изображения.');
+    }
+
     return {
-      blob: new Blob([updated], { type: 'application/x-fictionbook+xml;charset=utf-8' }),
+      blob: finalBlob,
       text: previewParts.join('\n\n') || 'В FB2 не найден текст для перевода.'
     };
   }
