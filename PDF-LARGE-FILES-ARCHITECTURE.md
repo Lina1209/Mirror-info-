@@ -288,3 +288,8 @@ A follow-up synthetic fixture assertion checks that the Popup /Rect remains exac
 ## Text annotation reply relationships (/IRT and /RT) — Chromium run 45981027457
 
 The synthetic two-batch browser fixture now creates a Text reply annotation whose `/IRT` points to the original sticky note and whose `/RT` is `/R`. Chromium assertions verify the source relationship and confirm the same parent reference and reply type remain after merge. The test passed in run 45981027457 (commit 8e924f4). This validates the tested simple reply case only; it does not establish support for every PDF reply-thread variant, cross-page threads, grouped comments, or arbitrary third-party annotation dictionaries.
+
+
+### Annotation identity and print flags follow-up (2026-11-27)
+
+Chromium Actions run [45981343496](https://github.com/Lina1209/Mirror-info-/actions/runs/45981343496) completed successfully on commit `5ab2b1766fc83f5d02f69c691799e0a075f1e1ff`. The synthetic Highlight fixture now includes a unique annotation name (`/NM`) and the Print flag (`/F = 4`); browser assertions verify both values in the source dictionary and after the two-batch merge. The run also revalidated the existing synthetic checks for reply relationships (`/IRT`, `/RT`), Popup geometry and state, normal appearance stream, QuadPoints, author/date/opacity, named destinations, outlines, links, and reconstructed sample form fields. This remains a small synthetic compatibility test; it does not prove visual equivalence or universal preservation for arbitrary PDFs, nor does it validate signatures, tagged PDF structure, attachments, memory bounds, or Workers runtime suitability.
