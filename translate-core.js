@@ -2229,6 +2229,22 @@
       throw new Error('Не удалось подтвердить целостность собранного FB2-файла.');
     }
 
+    // Повторно проверяем уже сериализованный XML: обложки и другие
+    // встроенные изображения, их ID и ссылки на них должны сохраниться.
+    if (fb2StructureSignature(verified) !== structureBefore) {
+      throw new Error('После сборки FB2 изменилась структура книги или ссылки на ресурсы.');
+    }
+    const verifiedBinaries = Array.from(verified.getElementsByTagName('*'))
+      .filter(element => element.localName === 'binary')
+      .map(element => ({
+        attributes: Array.from(element.attributes || [])
+          .map(attribute => [attribute.name, attribute.value]),
+        content: element.textContent
+      }));
+    if (JSON.stringify(verifiedBinaries) !== JSON.stringify(binariesBefore)) {
+      throw new Error('После сборки FB2 изменились встроенные изображения или обложка.');
+    }
+
     return {
       blob: new Blob([updated], { type: 'application/x-fictionbook+xml;charset=utf-8' }),
       text: previewParts.join('\n\n') || 'В FB2 не найден текст для перевода.'
