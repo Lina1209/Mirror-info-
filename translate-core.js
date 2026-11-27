@@ -1245,6 +1245,38 @@
     const chartNs = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
     const sheetNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 
+    function docxStructureSignature(doc) {
+      const parts = [];
+      const walker = doc.createTreeWalker(doc, NodeFilter.SHOW_ELEMENT);
+      let element;
+      while ((element = walker.nextNode())) {
+        const attributes = Array.from(element.attributes)
+          .filter(attribute => {
+            const localName = attribute.localName || attribute.name;
+            // Эти атрибуты меняются только для перевода альтернативного текста
+            // или корректного сохранения пробелов в текстовых узлах.
+            if (localName === 'title' || localName === 'descr') return false;
+            if (
+              localName === 'space' &&
+              attribute.namespaceURI === 'http://www.w3.org/XML/1998/namespace'
+            ) return false;
+            return true;
+          })
+          .map(attribute => [
+            attribute.namespaceURI || '',
+            attribute.localName || attribute.name,
+            attribute.value
+          ])
+          .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+        parts.push([
+          element.namespaceURI || '',
+          element.localName || element.nodeName,
+          attributes
+        ]);
+      }
+      return JSON.stringify(parts);
+    }
+
     async function translateTextGroups(groups, namespace, tagName) {
       for (const group of groups) {
         let nodes = Array.from(group.getElementsByTagNameNS(namespace, tagName));
@@ -1299,6 +1331,7 @@
       if (doc.querySelector('parsererror')) {
         throw new Error('Не удалось прочитать часть DOCX: ' + entry.name);
       }
+      const originalStructure = docxStructureSignature(doc);
 
       // Абзацы включают текст в ячейках таблиц, колонтитулах,
       // сносках, примечаниях и комментариях; разметка Word сохраняется.
@@ -1310,6 +1343,9 @@
         'http://schemas.openxmlformats.org/drawingml/2006/picture',
         drawingNs
       ]);
+      if (docxStructureSignature(doc) !== originalStructure) {
+        throw new Error('При переводе изменилась структура или оформление Word: ' + entry.name);
+      }
       zip.file(entry.name, new XMLSerializer().serializeToString(doc));
     }
 
