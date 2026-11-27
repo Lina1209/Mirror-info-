@@ -96,6 +96,8 @@
         annotation.set(name('C'), numbers([1, 1, 0]));
         annotation.set(name('T'), PDFString.of('Lina Test Author'));
         annotation.set(name('M'), PDFString.of('D:20261127100000Z'));
+        annotation.set(name('NM'), PDFString.of('batch-a-highlight-001'));
+        annotation.set(name('F'), PDFNumber.of(4));
         annotation.set(name('CA'), PDFNumber.of(0.65));
         page.node.addAnnot(context.register(annotation));
       }
@@ -493,6 +495,8 @@
           assert(JSON.stringify(readRawAnnotationNumbers(first, first.getPages()[0], 'Highlight', 'C')) === JSON.stringify([1, 1, 0]), 'Source A highlight color fixture is correct');
           assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'T') === 'Lina Test Author', 'Source A highlight author fixture is correct');
           assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'M') === 'D:20261127100000Z', 'Source A highlight modification date fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'NM') === 'batch-a-highlight-001', 'Source A highlight unique annotation name fixture is correct');
+          assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'F') === 4, 'Source A highlight Print flag fixture is correct');
           assert(readRawAnnotationScalar(first, first.getPages()[0], 'Highlight', 'CA') === 0.65, 'Source A highlight opacity fixture is correct');
           assert(readRawAnnotationContents(second, second.getPages()[0], 'Highlight').includes('Batch B preserved highlight'), 'Source B highlight Contents exists in the raw PDF annotation dictionary');
           for (const subtype of ['Underline', 'StrikeOut', 'Text']) {
@@ -740,6 +744,8 @@
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Text').includes('Batch A sticky note'), 'Text note Contents survive in the merged raw annotation dictionary');
           assert(hasLinkedPopup(merged, merged.getPages()[0]), 'Text note popup and reciprocal parent references survive the merge');
           assert(hasTextReply(merged, merged.getPages()[0]), 'Text annotation reply relationship survives the merge');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'NM') === 'batch-a-highlight-001', 'Highlight unique annotation name survives the merge');
+          assert(readRawAnnotationScalar(merged, merged.getPages()[0], 'Highlight', 'F') === 4, 'Highlight Print flag survives the merge');
           assert(hasPopupGeometry(merged, merged.getPages()[0]), 'Popup rectangle and closed state survive the merge unchanged');
           assert(hasNormalAppearance(merged, merged.getPages()[0], 'Text'), 'Text note normal appearance stream survives the merge');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
