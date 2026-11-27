@@ -2733,6 +2733,34 @@
           0.94
         );
       });
+      // Проверяем не только размер Blob, но и то, что экспортированный файл
+      // действительно декодируется и сохраняет исходные размеры изображения.
+      if (!blob.size || !['image/jpeg', 'image/png'].includes(blob.type)) {
+        throw new Error('Экспорт изображения вернул пустой файл или неподдерживаемый формат.');
+      }
+      const verificationUrl = URL.createObjectURL(blob);
+      const verificationImage = new Image();
+      try {
+        await new Promise((resolve, reject) => {
+          verificationImage.onload = resolve;
+          verificationImage.onerror = () => reject(
+            new Error('Готовое изображение не удалось повторно открыть после экспорта.')
+          );
+          verificationImage.src = verificationUrl;
+        });
+        if (
+          verificationImage.naturalWidth !== image.naturalWidth ||
+          verificationImage.naturalHeight !== image.naturalHeight
+        ) {
+          throw new Error('После экспорта изменились размеры изображения. Готовый файл не будет выдан.');
+        }
+      } finally {
+        verificationImage.onload = null;
+        verificationImage.onerror = null;
+        verificationImage.src = '';
+        URL.revokeObjectURL(verificationUrl);
+      }
+
       // Имя файла соответствует фактическому MIME, возвращённому браузером.
       const outputExtension = blob.type === 'image/jpeg' ? 'jpg' : 'png';
 
