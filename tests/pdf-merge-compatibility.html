@@ -223,7 +223,6 @@
               pageRefMap.get(sourcePages[0].ref.toString()),
               pageRefMap.get(sourcePages[1].ref.toString())
             );
-            const PDFName = window.PDFLib.PDFName;
             for (let pageIndex = 0; pageIndex < sourcePages.length; pageIndex += 1) {
               const sourceAnnots = sourcePages[pageIndex].node.Annots();
               const copiedAnnots = copied[pageIndex].node.Annots();
