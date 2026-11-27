@@ -78,6 +78,24 @@
         root.set(name('Last'), topRef);
         return topRef;
       }
+      function addNamedDestination(document, key, pageRef) {
+        const { PDFDict, PDFName, PDFArray, PDFString } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const destination = PDFArray.withContext(context);
+        destination.push(pageRef);
+        destination.push(name('Fit'));
+        const destinationRef = context.register(destination);
+        const namesArray = PDFArray.withContext(context);
+        namesArray.push(PDFString.of(key));
+        namesArray.push(destinationRef);
+        const destTree = PDFDict.withContext(context);
+        destTree.set(name('Names'), namesArray);
+        const destTreeRef = context.register(destTree);
+        const names = PDFDict.withContext(context);
+        names.set(name('Dests'), destTreeRef);
+        document.catalog.set(name('Names'), context.register(names));
+      }
       function createOutlineRoot(document, chapterTitle, sectionTitle, chapterTargetRef, sectionTargetRef) {
         const { PDFDict, PDFName, PDFArray, PDFString, PDFNumber } = window.PDFLib;
         const context = document.context;
@@ -185,7 +203,10 @@
           second.getPages()[1].setRotation(window.PDFLib.degrees(270));
           createOutlineRoot(first, 'Batch A chapter', 'Batch A section', first.getPages()[0].ref, first.getPages()[1].ref);
           createOutlineRoot(second, 'Batch B chapter', 'Batch B section', second.getPages()[0].ref, second.getPages()[1].ref);
+          addNamedDestination(first, 'chapter-start', first.getPages()[0].ref);
+          addNamedDestination(second, 'chapter-start', second.getPages()[0].ref);
           const merged = await window.PDFLib.PDFDocument.create();
+          const mergedDestinationNames = [];
           const outlineRoot = PDFDict.withContext(merged.context);
           outlineRoot.set(PDFName.of('Type'), PDFName.of('Outlines'));
           outlineRoot.set(PDFName.of('Count'), PDFNumber.of(4));
@@ -206,6 +227,25 @@
             const pageRefMap = new Map(
               sourcePages.map((page, index) => [page.ref.toString(), copied[index].ref])
             );
+            const sourceNamesRef = source.catalog.get(PDFName.of('Names'));
+            const sourceNames = sourceNamesRef && source.context.lookup(sourceNamesRef);
+            const sourceDestsRef = sourceNames && sourceNames.get(PDFName.of('Dests'));
+            const sourceDests = sourceDestsRef && source.context.lookup(sourceDestsRef);
+            const sourceNameArray = sourceDests && sourceDests.get(PDFName.of('Names'));
+            if (sourceNameArray) {
+              for (let nameIndex = 0; nameIndex + 1 < sourceNameArray.size(); nameIndex += 2) {
+                const originalName = sourceNameArray.get(nameIndex).decodeText();
+                const destinationArray = source.context.lookup(sourceNameArray.get(nameIndex + 1));
+                const originalTarget = destinationArray.get(0);
+                const mappedTarget = pageRefMap.get(originalTarget.toString());
+                if (mappedTarget) {
+                  const renamed = (source === first ? 'batch-a-' : 'batch-b-') + originalName;
+                  const rewritten = destinationArray.clone(merged.context);
+                  rewritten.set(0, mappedTarget);
+                  mergedDestinationNames.push({ name: renamed, destination: merged.context.register(rewritten) });
+                }
+              }
+            }
             const sourceOutlineRootRef = source.catalog.get(PDFName.of('Outlines'));
             const sourceOutlineRoot = source.context.lookup(sourceOutlineRootRef);
             const sourceChapterRef = sourceOutlineRoot.get(PDFName.of('First'));
@@ -243,6 +283,18 @@
                     destinationInAction = true;
                   }
                 }
+                if (sourceDestination instanceof window.PDFLib.PDFString) {
+                  const originalName = sourceDestination.decodeText();
+                  const renamed = (source === first ? 'batch-a-' : 'batch-b-') + originalName;
+                  const copiedName = window.PDFLib.PDFString.of(renamed);
+                  if (destinationInAction && copiedAction) {
+                    copiedAction = merged.context.lookup(copiedAction);
+                    copiedAction.set(PDFName.of('D'), copiedName);
+                  } else {
+                    copiedAnnotation.set(PDFName.of('Dest'), copiedName);
+                  }
+                  continue;
+                }
                 if (!(sourceDestination instanceof window.PDFLib.PDFArray)) continue;
                 const originalTarget = sourceDestination.get(0);
                 const mappedTarget = pageRefMap.get(originalTarget.toString());
@@ -257,6 +309,18 @@
                 }
               }
             }
+          }
+          if (mergedDestinationNames.length) {
+            const namesArray = window.PDFLib.PDFArray.withContext(merged.context);
+            for (const entry of mergedDestinationNames) {
+              namesArray.push(window.PDFLib.PDFString.of(entry.name));
+              namesArray.push(entry.destination);
+            }
+            const destTree = window.PDFLib.PDFDict.withContext(merged.context);
+            destTree.set(PDFName.of('Names'), namesArray);
+            const names = window.PDFLib.PDFDict.withContext(merged.context);
+            names.set(PDFName.of('Dests'), merged.context.register(destTree));
+            merged.catalog.set(PDFName.of('Names'), merged.context.register(names));
           }
           const output = await merged.save({ useObjectStreams: true });
           const result = await inspect(output);
