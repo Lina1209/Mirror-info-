@@ -312,3 +312,10 @@ A follow-up regression fixture now adds a second Stamp annotation with `/AS /Off
 GitHub Actions run [45981981671](https://github.com/Lina1209/Mirror-info-/actions/runs/45981981671) completed successfully in Chromium on commit `a5faf68ad8c620eaa8b2deb94024311496d736f6`. The fixture now creates two synthetic Stamp annotations, one with `/AS /On` and one with `/AS /Off`. Before and after `copyPages` merge, assertions verify that each annotation selects its matching state and that both `/On` and `/Off` normal-appearance Form XObject streams are present and non-empty. The complete existing synthetic compatibility harness also passed.
 
 This is a structural dictionary/stream check only. It does not prove visual rendering of either state in Acrobat or other viewers, interactive state toggling, arbitrary appearance resources, or production-scale PDF merge behavior. The separate known AcroForm limitation remains: the plain `copyPages` merge has no document-level field tree; only the explicitly reconstructed simple test fields pass.
+
+
+### Stateful annotation visual rendering regression (2026-11-27)
+
+GitHub Actions run [45982245753](https://github.com/Lina1209/Mirror-info-/actions/runs/45982245753) completed successfully on commit `f3ac3674941e8218abf36851c16ca706d4ac6cd1`. The Chromium harness now renders the merged synthetic PDF page with PDF.js using annotation rendering enabled, samples pixels at the centers of the two Stamp fixtures, and asserts that the selected `/On` state appears green while the selected `/Off` state appears neutral gray. The complete browser compatibility job passed.
+
+This is a visual regression for the constructed 40×40-point Form XObject fixtures at their tested coordinates and colors. It does not establish rendering correctness for arbitrary real-world appearance streams, transparency/resource combinations, other PDF viewers, interactive state changes, or production PDF translation. Real-document and device-scale testing remains outstanding.
