@@ -134,3 +134,10 @@ This automation validates only the small synthetic merge fixture. It does not te
 ## Remaining PDF feature gaps after the passing small-file tests
 
 The current test proves only the listed page-level properties for synthetic files. It does not establish preservation of PDF outlines/bookmarks or named destinations, form fields, digital signatures, embedded files, tagged accessibility structure, or arbitrary annotations. These features must be tested separately against representative source PDFs. Until then, the application must not promise that PDF bookmarks or interactive form features survive translation or merge. The successful Cloudflare Pages result for this branch is a **preview deployment**, not a production deployment; it does not change the production `main` site.
+
+
+## PDF outline/bookmark compatibility fixture (in progress)
+
+The browser harness now creates a simple two-level outline tree in each source PDF, reads the source outline titles and hierarchy, reconstructs the combined outline tree in the merged document, and remaps each outline destination to the corresponding copied page. The expected result is four outline entries: one chapter and one nested section for each batch, targeting merged page indexes 0, 1, 2, and 3. This is a deliberately narrow synthetic fixture.
+
+This test does **not** yet prove preservation of arbitrary real-world PDF outlines. It does not cover named destinations, non-page actions, open/closed state, outline color/style flags, Unicode edge cases, malformed trees, or deeply nested structures. The prototype rebuilds a simple outline hierarchy; it is not a byte-for-byte copy of all outline dictionary properties. Wait for the automated Chromium run before recording it as verified.
