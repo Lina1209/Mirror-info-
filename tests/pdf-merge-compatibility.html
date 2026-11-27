@@ -148,6 +148,45 @@
         }
         return null;
       }
+      function addNormalAppearance(document, annotation, fillColor) {
+        const { PDFDict, PDFName, PDFArray, PDFNumber, PDFRawStream } = window.PDFLib;
+        const context = document.context;
+        const name = value => PDFName.of(value);
+        const bbox = PDFArray.withContext(context);
+        [0, 0, 18, 18].forEach(value => bbox.push(PDFNumber.of(value)));
+        const streamDict = PDFDict.withContext(context);
+        streamDict.set(name('Type'), name('XObject'));
+        streamDict.set(name('Subtype'), name('Form'));
+        streamDict.set(name('FormType'), PDFNumber.of(1));
+        streamDict.set(name('BBox'), bbox);
+        streamDict.set(name('Resources'), PDFDict.withContext(context));
+        const stream = PDFRawStream.of(streamDict, new TextEncoder().encode('q ' + fillColor + ' rg 1 1 16 16 re f Q'));
+        const appearanceRef = context.register(stream);
+        const normalAppearance = PDFDict.withContext(context);
+        normalAppearance.set(name('N'), appearanceRef);
+        const appearance = PDFDict.withContext(context);
+        appearance.set(name('AP'), normalAppearance);
+        annotation.set(name('AP'), normalAppearance);
+        return appearanceRef;
+      }
+      function hasNormalAppearance(document, page, subtype) {
+        const { PDFName, PDFRawStream } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return false;
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const kind = annotation.get(PDFName.of('Subtype'));
+          if (!kind || kind.toString() !== '/' + subtype) continue;
+          const ap = annotation.get(PDFName.of('AP'));
+          if (!ap) return false;
+          const appearanceDict = document.context.lookup(ap);
+          const normal = appearanceDict.get(PDFName.of('N'));
+          if (!normal) return false;
+          const stream = document.context.lookup(normal);
+          return stream instanceof PDFRawStream && stream.contents.length > 0;
+        }
+        return false;
+      }
       function addMarkupAnnotation(document, page, subtype, contents) {
         const { PDFDict, PDFName, PDFArray, PDFNumber, PDFString } = window.PDFLib;
         const context = document.context;
@@ -166,6 +205,7 @@
         }
         annotation.set(name('Contents'), PDFString.of(contents));
         if (subtype === 'Text') annotation.set(name('Name'), name('Comment'));
+        if (subtype === 'Text') addNormalAppearance(document, annotation, '0.15 0.35 0.75');
         page.node.addAnnot(context.register(annotation));
       }
       function addPopupForTextAnnotation(document, page) {
@@ -372,6 +412,7 @@
           addMarkupAnnotation(first, first.getPages()[0], 'Text', 'Batch A sticky note');
           addPopupForTextAnnotation(first, first.getPages()[0]);
           assert(hasLinkedPopup(first, first.getPages()[0]), 'Source A text note and popup have reciprocal references');
+          assert(hasNormalAppearance(first, first.getPages()[0], 'Text'), 'Source A text note has a normal appearance stream');
           const sourceAInspection = await inspect(await first.save());
           const sourceBInspection = await inspect(await second.save());
           report('Source A annotation inventory: ' + JSON.stringify(sourceAInspection.annotationSummary));
@@ -627,6 +668,7 @@
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'StrikeOut').includes('Batch A strikeout note'), 'StrikeOut Contents survive in the merged raw annotation dictionary');
           assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Text').includes('Batch A sticky note'), 'Text note Contents survive in the merged raw annotation dictionary');
           assert(hasLinkedPopup(merged, merged.getPages()[0]), 'Text note popup and reciprocal parent references survive the merge');
+          assert(hasNormalAppearance(merged, merged.getPages()[0], 'Text'), 'Text note normal appearance stream survives the merge');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
           assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
           assert(namedTargets.get('batch-b-chapter-start') === 2, 'Batch B named destination resolves to merged page 3');
