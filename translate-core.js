@@ -1601,9 +1601,13 @@
       if (doc.querySelector('parsererror')) {
         throw new Error('Не удалось прочитать диаграмму или схему: ' + entry.name);
       }
+      const originalDrawingStructure = docxStructureSignature(doc);
       const paragraphs = Array.from(doc.getElementsByTagNameNS(drawingNs, 'p'));
       await translateTextGroups(paragraphs, drawingNs, 't');
       await translateDescriptionAttributes(doc, [drawingNs]);
+      if (docxStructureSignature(doc) !== originalDrawingStructure) {
+        throw new Error('При переводе изменилась структура диаграммы или SmartArt: ' + entry.name);
+      }
 
       // Подписи категорий могут храниться в текстовом кэше диаграммы.
       // Числовые кэши не затрагиваем.
@@ -1667,6 +1671,7 @@
         if (doc.querySelector('parsererror')) {
           throw new Error('Не удалось прочитать встроенную презентацию: ' + nestedEntry.name);
         }
+        const originalPresentationStructure = docxStructureSignature(doc);
         await translateTextGroups(
           Array.from(doc.getElementsByTagNameNS(drawingNs, 'p')),
           drawingNs,
@@ -1680,9 +1685,14 @@
           ];
           await translateTextGroups(caches, chartNs, 'v');
         }
+        if (docxStructureSignature(doc) !== originalPresentationStructure) {
+          throw new Error('При переводе изменилась структура встроенной презентации: ' + nestedEntry.name);
+        }
         nestedZip.file(nestedEntry.name, new XMLSerializer().serializeToString(doc));
       }
-      zip.file(embedded.name, await nestedZip.generateAsync({ type: 'uint8array' }));
+      const rebuiltPresentation = await nestedZip.generateAsync({ type: 'uint8array' });
+      await verifyNestedPackage(nestedZip, rebuiltPresentation, 'Встроенная презентация PowerPoint');
+      zip.file(embedded.name, rebuiltPresentation);
     }
 
     // Вложенные документы Word обрабатываем рекурсивно, ограничивая глубину.
@@ -1844,6 +1854,10 @@
 
     const JSZip = await ensureJSZip();
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    const epubFileNames = Object.keys(zip.files).filter(name => !zip.files[name].dir);
+    if (epubFileNames[0] !== 'mimetype') {
+      throw new Error('В EPUB файл mimetype должен быть первым элементом архива. Пересоберите EPUB стандартным экспортом книги.');
+    }
     const mimetypeEntry = zip.file('mimetype');
     if (!mimetypeEntry || (await mimetypeEntry.async('text')).trim() !== 'application/epub+zip') {
       throw new Error('Файл не соответствует структуре EPUB: отсутствует корректный mimetype.');
@@ -1968,6 +1982,17 @@
       compression: 'DEFLATE',
       compressionOptions: { level: 6 }
     });
+    const verifiedEpub = await JSZip.loadAsync(await blob.arrayBuffer());
+    const verifiedNames = Object.keys(verifiedEpub.files).filter(name => !verifiedEpub.files[name].dir);
+    if (
+      verifiedNames[0] !== 'mimetype' ||
+      verifiedNames.length !== epubFileNames.length ||
+      epubFileNames.some(name => !verifiedEpub.file(name)) ||
+      verifiedNames.some(name => !epubFileNames.includes(name)) ||
+      (await verifiedEpub.file('mimetype').async('text')).trim() !== 'application/epub+zip'
+    ) {
+      throw new Error('Проверка собранного EPUB выявила повреждение структуры архива.');
+    }
 
     return {
       blob,
