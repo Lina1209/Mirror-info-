@@ -1264,6 +1264,15 @@
         await relationship.async('uint8array')
       );
     }
+    // Критические ресурсы оформления фиксируем отдельно: перевод текста не
+    // должен менять стили, темы, нумерацию, настройки или встроенные шрифты.
+    const protectedWordParts = zip.file(
+      /^word\/(styles\.xml|numbering\.xml|fontTable\.xml|settings\.xml|webSettings\.xml|theme\/.*|fonts\/.*|media\/.*)$/i
+    ).filter(entry => !entry.dir);
+    const originalProtectedParts = new Map();
+    for (const entry of protectedWordParts) {
+      originalProtectedParts.set(entry.name, await entry.async('uint8array'));
+    }
     const entries = zip.file(/^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/i).concat(zip.file(/^word\/glossary\/document\.xml$/i));
 
     if (!entries.length) {
@@ -1532,6 +1541,20 @@
         currentBytes.some((byte, index) => byte !== originalBytes[index])
       ) {
         throw new Error('Изменились связи объектов DOCX: ' + relationshipName);
+      }
+    }
+
+    for (const [partName, originalBytes] of originalProtectedParts) {
+      const currentEntry = zip.file(partName);
+      if (!currentEntry) {
+        throw new Error('Потерян ресурс оформления Word: ' + partName);
+      }
+      const currentBytes = await currentEntry.async('uint8array');
+      if (
+        currentBytes.length !== originalBytes.length ||
+        currentBytes.some((byte, index) => byte !== originalBytes[index])
+      ) {
+        throw new Error('Изменился защищённый ресурс оформления Word: ' + partName);
       }
     }
 
