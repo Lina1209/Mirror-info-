@@ -282,4 +282,4 @@ The strengthened Chromium test passed. In addition to confirming the Text annota
 
 ## Popup rectangle and open-state check
 
-A follow-up synthetic fixture assertion checks that the Popup /Rect remains exactly [270, 215, 420, 330] and /Open remains false after merge. The assertion was added in commit b574ec9; its Chromium run is pending. Do not treat popup geometry/state preservation as verified until that run passes.
+A follow-up synthetic fixture assertion checks that the Popup /Rect remains exactly [270, 215, 420, 330] and /Open remains false after merge. The assertion was added in commit b574ec9 and passed in Chromium run 45980775274. It verifies the exact fixture rectangle and closed state survive the merge. This remains a single synthetic Popup fixture, not proof for arbitrary popup geometry or all viewers.
