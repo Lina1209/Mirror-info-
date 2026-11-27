@@ -2457,15 +2457,14 @@
     // Сохраняем компактные контрольные суммы ресурсов, которые переводчик
     // не редактирует: обложек, изображений, CSS, шрифтов, аудио и прочих файлов.
     // Это позволяет проверить их байтовую целостность без хранения второй копии архива.
-    function hashEpubResource(bytes) {
-      let first = 0x811c9dc5;
-      let second = 0x9e3779b9;
-      for (let index = 0; index < bytes.length; index += 1) {
-        const value = bytes[index];
-        first = Math.imul(first ^ value, 0x01000193) >>> 0;
-        second = (Math.imul(second ^ value, 0x85ebca6b) + index) >>> 0;
+    async function hashEpubResource(bytes) {
+      if (!globalThis.crypto?.subtle) {
+        throw new Error('Браузер не поддерживает безопасную проверку ресурсов EPUB (SHA-256).');
       }
-      return bytes.length + ':' + first.toString(16) + ':' + second.toString(16);
+      const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+      return Array.from(new Uint8Array(digest), byte =>
+        byte.toString(16).padStart(2, '0')
+      ).join('');
     }
     const translatedEpubEntry = /\.(xhtml|html|htm|ncx|opf)$/i;
     const protectedEpubResources = new Map();
