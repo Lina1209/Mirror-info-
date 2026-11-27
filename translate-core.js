@@ -1494,8 +1494,9 @@
               let translatedTitle = originalTitle;
               try {
                 const candidate = await translateInParts(originalTitle);
-                if (typeof candidate === 'string' && candidate.trim()) {
-                  translatedTitle = candidate.trim().slice(0, 500);
+                if (typeof candidate === 'string') {
+                  const safeCandidate = candidate.replace(/[\u0000-\u001F\u007F]/g, ' ').trim();
+                  if (safeCandidate) translatedTitle = safeCandidate.slice(0, 500);
                 }
               } catch (_) {
                 // Если перевод названия закладки не удался, оставляем исходное название.
