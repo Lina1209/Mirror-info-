@@ -1132,6 +1132,11 @@
             'FAST'
           );
 
+          if (unicodeFontData) {
+            registerPdfUnicodeFont(outputPdf, unicodeFontData);
+          }
+          const pointScaleX = pageWidth / canvas.width;
+          const pointScaleY = pageHeight / canvas.height;
           // Preserve external URI links as clickable regions over the rasterized page.
           // Internal destinations and non-link annotations are intentionally left untouched.
           try {
@@ -1160,11 +1165,6 @@
             // Missing or malformed annotations must not prevent page translation.
           }
 
-          if (unicodeFontData) {
-            registerPdfUnicodeFont(outputPdf, unicodeFontData);
-          }
-          const pointScaleX = pageWidth / canvas.width;
-          const pointScaleY = pageHeight / canvas.height;
           if (unicodeFontData) textOverlay.forEach(item => {
             if (!item.text || !item.text.trim()) return;
 
