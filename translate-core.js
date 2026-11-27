@@ -997,6 +997,8 @@
 
     let outputPdf = null;
     const previewParts = [];
+    const expectedPageGeometry = [];
+    let copiedLinkAnnotationCount = 0;
     let totalRasterPixels = 0;
     const MAX_TOTAL_RASTER_PIXELS = 100000000;
 
@@ -1119,6 +1121,7 @@
 
           const pageWidth = viewport.width / scale;
           const pageHeight = viewport.height / scale;
+          expectedPageGeometry.push({ width: pageWidth, height: pageHeight });
           const orientation = pageWidth > pageHeight ? 'landscape' : 'portrait';
           const pageBlob = await new Promise((resolve, reject) => {
             canvas.toBlob(
@@ -1176,6 +1179,7 @@
                   try { safeUrl = new URL(annotation.url); } catch (_) { continue; }
                   if (!['http:', 'https:', 'mailto:'].includes(safeUrl.protocol)) continue;
                   outputPdf.link(left, top, right - left, bottom - top, { url: safeUrl.href });
+                  copiedLinkAnnotationCount += 1;
                   continue;
                 }
                 try {
@@ -1188,6 +1192,7 @@
                     : await sourcePdf.getPageIndex(pageReference);
                   if (!Number.isInteger(targetPageIndex) || targetPageIndex < 0 || targetPageIndex >= sourcePdf.numPages) continue;
                   outputPdf.link(left, top, right - left, bottom - top, { pageNumber: targetPageIndex + 1 });
+                  copiedLinkAnnotationCount += 1;
                 } catch (_) {
                   // Unresolvable internal destinations are skipped safely.
                 }
@@ -1368,13 +1373,27 @@
             sourcePdf.numPages + ', получено ' + verifiedPdf.numPages + '.'
           );
         }
+        let rebuiltLinkAnnotationCount = 0;
         for (let pageNumber = 1; pageNumber <= verifiedPdf.numPages; pageNumber += 1) {
           const checkPage = await verifiedPdf.getPage(pageNumber);
-          if (!checkPage || !checkPage.getViewport({ scale: 1 }).width ||
-              !checkPage.getViewport({ scale: 1 }).height) {
+          if (!checkPage) {
             throw new Error('В собранном PDF обнаружена повреждённая страница ' + pageNumber + '.');
           }
+          const rebuiltViewport = checkPage.getViewport({ scale: 1 });
+          const expectedGeometry = expectedPageGeometry[pageNumber - 1];
+          if (!rebuiltViewport.width || !rebuiltViewport.height || !expectedGeometry ||
+              Math.abs(rebuiltViewport.width - expectedGeometry.width) > 1.5 ||
+              Math.abs(rebuiltViewport.height - expectedGeometry.height) > 1.5) {
+            throw new Error('После сборки изменились размеры или ориентация страницы PDF ' + pageNumber + '.');
+          }
+          const rebuiltAnnotations = await checkPage.getAnnotations({ intent: 'display' });
+          rebuiltLinkAnnotationCount += Array.isArray(rebuiltAnnotations)
+            ? rebuiltAnnotations.filter(annotation => annotation?.subtype === 'Link').length
+            : 0;
           checkPage.cleanup();
+        }
+        if (rebuiltLinkAnnotationCount < copiedLinkAnnotationCount) {
+          throw new Error('После сборки PDF потерялись некоторые перенесённые ссылки.');
         }
       } catch (error) {
         if (error && /изменилось количество страниц|повреждённая страница/.test(error.message || '')) {
