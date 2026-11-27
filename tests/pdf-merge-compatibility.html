@@ -96,6 +96,20 @@
         annotation.set(name('C'), numbers([1, 1, 0]));
         page.node.addAnnot(context.register(annotation));
       }
+      function readRawAnnotationContents(document, page, subtype) {
+        const { PDFName, PDFString } = window.PDFLib;
+        const annots = page.node.Annots();
+        if (!annots) return [];
+        const values = [];
+        for (let index = 0; index < annots.size(); index += 1) {
+          const annotation = document.context.lookup(annots.get(index));
+          const kind = annotation.get(PDFName.of('Subtype'));
+          if (!kind || kind.toString() !== '/' + subtype) continue;
+          const raw = annotation.get(PDFName.of('Contents'));
+          values.push(raw instanceof PDFString ? raw.decodeText() : null);
+        }
+        return values;
+      }
       function addMarkupAnnotation(document, page, subtype, contents) {
         const { PDFDict, PDFName, PDFArray, PDFNumber, PDFString } = window.PDFLib;
         const context = document.context;
@@ -270,10 +284,10 @@
           const sourceBInspection = await inspect(await second.save());
           report('Source A annotation inventory: ' + JSON.stringify(sourceAInspection.annotationSummary));
           report('Source B annotation inventory: ' + JSON.stringify(sourceBInspection.annotationSummary));
-          assert(sourceAInspection.annotationSummary.some(item => item.subtype === 'Highlight' && item.contents === 'Batch A preserved highlight'), 'Source A highlight fixture exposes its contents before merge');
-          assert(sourceBInspection.annotationSummary.some(item => item.subtype === 'Highlight' && item.contents === 'Batch B preserved highlight'), 'Source B highlight fixture exposes its contents before merge');
+          assert(readRawAnnotationContents(first, first.getPages()[0], 'Highlight').includes('Batch A preserved highlight'), 'Source A highlight Contents exists in the raw PDF annotation dictionary');
+          assert(readRawAnnotationContents(second, second.getPages()[0], 'Highlight').includes('Batch B preserved highlight'), 'Source B highlight Contents exists in the raw PDF annotation dictionary');
           for (const subtype of ['Underline', 'StrikeOut', 'Text']) {
-            assert(sourceAInspection.annotationSummary.some(item => item.subtype === subtype), 'Source A ' + subtype + ' fixture is readable before merge');
+            assert(readRawAnnotationContents(first, first.getPages()[0], subtype).includes('Batch A ' + (subtype === 'Underline' ? 'underline' : subtype === 'StrikeOut' ? 'strikeout' : 'sticky note') + (subtype === 'Text' ? '' : ' note')), 'Source A ' + subtype + ' Contents exists in the raw PDF annotation dictionary');
           }
           const sourceForm = first.getForm();
           const sampleField = sourceForm.createTextField('batchA.sampleField');
@@ -420,7 +434,12 @@
           for (const subtype of ['Underline', 'StrikeOut', 'Text']) {
             assert(result.annotationSummary.some(item => item.subtype === subtype), subtype + ' annotation object survives the merge');
           }
-          assert(result.highlightContents.every(value => value === ''), 'Highlight annotation contents are absent after copyPages merge (known metadata limitation)');
+          const mergedHighlightContents = readRawAnnotationContents(merged, merged.getPages()[0], 'Highlight');
+          report('Merged raw Highlight Contents: ' + JSON.stringify(mergedHighlightContents));
+          assert(mergedHighlightContents.includes('Batch A preserved highlight'), 'Batch A highlight Contents survive in the merged raw annotation dictionary');
+          assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Underline').includes('Batch A underline note'), 'Underline Contents survive in the merged raw annotation dictionary');
+          assert(readRawAnnotationContents(merged, merged.getPages()[0], 'StrikeOut').includes('Batch A strikeout note'), 'StrikeOut Contents survive in the merged raw annotation dictionary');
+          assert(readRawAnnotationContents(merged, merged.getPages()[0], 'Text').includes('Batch A sticky note'), 'Text note Contents survive in the merged raw annotation dictionary');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
           assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
           assert(namedTargets.get('batch-b-chapter-start') === 2, 'Batch B named destination resolves to merged page 3');
