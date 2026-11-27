@@ -283,3 +283,8 @@ The strengthened Chromium test passed. In addition to confirming the Text annota
 ## Popup rectangle and open-state check
 
 A follow-up synthetic fixture assertion checks that the Popup /Rect remains exactly [270, 215, 420, 330] and /Open remains false after merge. The assertion was added in commit b574ec9 and passed in Chromium run 45980775274. It verifies the exact fixture rectangle and closed state survive the merge. This remains a single synthetic Popup fixture, not proof for arbitrary popup geometry or all viewers.
+
+
+## Text annotation reply relationships (/IRT and /RT) — Chromium run 45981027457
+
+The synthetic two-batch browser fixture now creates a Text reply annotation whose `/IRT` points to the original sticky note and whose `/RT` is `/R`. Chromium assertions verify the source relationship and confirm the same parent reference and reply type remain after merge. The test passed in run 45981027457 (commit 8e924f4). This validates the tested simple reply case only; it does not establish support for every PDF reply-thread variant, cross-page threads, grouped comments, or arbitrary third-party annotation dictionaries.
