@@ -999,6 +999,8 @@
     const previewParts = [];
     const expectedPageGeometry = [];
     let copiedLinkAnnotationCount = 0;
+    let copiedOutlineItemCount = 0;
+    let expectedPdfMetadata = null;
     let totalRasterPixels = 0;
     const MAX_TOTAL_RASTER_PIXELS = 100000000;
 
@@ -1330,6 +1332,7 @@
           };
 
           await addOutlineItems(sourceOutline, null, 0);
+          copiedOutlineItemCount = addedOutlineItems;
         }
       } catch (_) {
         // Недоступные или повреждённые закладки не должны блокировать создание PDF.
@@ -1350,6 +1353,7 @@
           keywords: cleanMetadata(info.Keywords),
           creator: cleanMetadata(info.Creator)
         };
+        expectedPdfMetadata = properties;
         if (Object.values(properties).some(Boolean) && typeof outputPdf.setProperties === 'function') {
           outputPdf.setProperties(properties);
         }
@@ -1394,6 +1398,30 @@
         }
         if (rebuiltLinkAnnotationCount < copiedLinkAnnotationCount) {
           throw new Error('После сборки PDF потерялись некоторые перенесённые ссылки.');
+        }
+        if (expectedPdfMetadata) {
+          const rebuiltMetadata = await verifiedPdf.getMetadata();
+          const rebuiltInfo = rebuiltMetadata?.info || {};
+          const metadataKeys = {
+            title: 'Title', subject: 'Subject', author: 'Author',
+            keywords: 'Keywords', creator: 'Creator'
+          };
+          for (const [key, infoKey] of Object.entries(metadataKeys)) {
+            const expectedValue = expectedPdfMetadata[key];
+            if (expectedValue && String(rebuiltInfo[infoKey] || '').trim() !== expectedValue) {
+              throw new Error('После сборки PDF не сохранились метаданные: ' + key + '.');
+            }
+          }
+        }
+        if (copiedOutlineItemCount > 0 && typeof verifiedPdf.getOutline === 'function') {
+          const rebuiltOutline = await verifiedPdf.getOutline();
+          const countOutlineItems = (items, depth = 0) => {
+            if (!Array.isArray(items) || depth > 32) return 0;
+            return items.reduce((total, item) => total + 1 + countOutlineItems(item?.items, depth + 1), 0);
+          };
+          if (countOutlineItems(rebuiltOutline) < copiedOutlineItemCount) {
+            throw new Error('После сборки PDF потерялись некоторые пункты оглавления.');
+          }
         }
       } catch (error) {
         if (error && /изменилось количество страниц|повреждённая страница/.test(error.message || '')) {
