@@ -1113,6 +1113,7 @@
     let expectedTextLayerCharacters = 0;
     let expectedPdfMetadata = null;
     let nonLinkAnnotationCount = 0;
+    let annotationInspectionFailed = false;
     let taggedStructureDetected = false;
     let totalRasterPixels = 0;
     const MAX_TOTAL_RASTER_PIXELS = 140000000;
@@ -1364,7 +1365,8 @@
               }
             }
           } catch (_) {
-            // Missing or malformed annotations must not prevent page translation.
+            // Keep translation available, but disclose that annotation inspection was incomplete.
+            annotationInspectionFailed = true;
           }
 
           if (unicodeFontData) textOverlay.forEach(item => {
@@ -1618,6 +1620,11 @@
       if (taggedStructureDetected) {
         pdfPreservationWarnings.push(
           'Исходный PDF содержит структурные теги доступности. Они не переносятся в новый файл; программа чтения с экрана может работать иначе.'
+        );
+      }
+      if (annotationInspectionFailed) {
+        pdfPreservationWarnings.push(
+          'Не удалось полностью проверить аннотации PDF. Некоторые ссылки или интерактивные элементы могли не попасть в переведённый файл.'
         );
       }
       if (nonLinkAnnotationCount > 0) {
