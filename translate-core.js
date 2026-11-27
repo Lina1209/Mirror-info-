@@ -2768,7 +2768,6 @@
       // Имя файла соответствует фактическому MIME, возвращённому браузером.
       const outputExtension = blob.type === 'image/jpeg' ? 'jpg' : 'png';
 
-      setTranslatedAsset(blob, file, outputExtension);
       return { blob, text: translatedLines.join('\n') };
     } finally {
       URL.revokeObjectURL(objectUrl);
@@ -3235,7 +3234,14 @@
               sourceFile !== selectedFile
             ) return;
 
-            if (asset && sourceFile) setTranslatedAsset(asset, sourceFile, ext);
+            if (asset && sourceFile) {
+              const outputExtension = asset.type === 'image/jpeg'
+                ? 'jpg'
+                : asset.type === 'image/png'
+                  ? 'png'
+                  : ext;
+              setTranslatedAsset(asset, sourceFile, outputExtension);
+            }
             showResult(sourceFile, result);
             if (asset) showTranslatedAssetPreview(asset);
 
