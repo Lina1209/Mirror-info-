@@ -7,6 +7,11 @@
   'use strict';
 
   const OCR_LANG = 'rus+eng';
+  const OCR_LANGUAGES = {
+    en: 'eng', ru: 'rus', kk: 'kaz', uk: 'ukr', de: 'deu',
+    fr: 'fra', es: 'spa', it: 'ita', tr: 'tur',
+    'zh-CN': 'chi_sim', ja: 'jpn', ko: 'kor', ar: 'ara'
+  };
   const MAX_CHUNK_LENGTH = 900;
   const REQUEST_DELAY = 350;
   const MAX_RETRIES = 3;
@@ -14,6 +19,7 @@
   let selectedFileText = '';
   let selectedFile = null;
   let ocrWorkerPromise = null;
+  let ocrWorkerLanguage = '';
 
   const $ = (id) => document.getElementById(id);
 
@@ -152,9 +158,22 @@
       throw new Error('Компонент распознавания сканов не загрузился.');
     }
 
-    if (!ocrWorkerPromise) {
+    const selectedLanguage = $('srcLang')?.value || 'auto';
+    const language = selectedLanguage === 'auto'
+      ? OCR_LANG
+      : (OCR_LANGUAGES[selectedLanguage] || OCR_LANG);
+
+    if (!ocrWorkerPromise || ocrWorkerLanguage !== language) {
+      if (ocrWorkerPromise) {
+        try {
+          const oldWorker = await ocrWorkerPromise;
+          await oldWorker.terminate();
+        } catch (_) {}
+      }
+
+      ocrWorkerLanguage = language;
       ocrWorkerPromise = window.Tesseract.createWorker(
-        OCR_LANG,
+        language,
         1,
         {
           logger: event => {
@@ -169,7 +188,11 @@
             }
           }
         }
-      );
+      ).catch(error => {
+        ocrWorkerPromise = null;
+        ocrWorkerLanguage = '';
+        throw error;
+      });
     }
 
     return ocrWorkerPromise;
