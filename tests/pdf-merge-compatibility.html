@@ -492,7 +492,13 @@
             if (option) reconstructedRadio.addOptionToPage(option, merged.getPage(0), widget.getRectangle());
           }
           const selectedRadio = sourceRadio.getSelected();
-          if (selectedRadio) reconstructedRadio.select(selectedRadio);
+          const sourceRadioOptions = sourceRadio.getOptions();
+          assert(sourceRadioOptions.length === sourceRadioWidgets.length, 'Source radio option names map one-to-one to widgets');
+          const selectedRadioIndex = selectedRadio ? sourceRadioOptions.indexOf(selectedRadio) : -1;
+          const selectedMergedRadioOption = selectedRadioIndex >= 0
+            ? sourceRadioWidgets[selectedRadioIndex].getOnValue().toString().substring(1)
+            : null;
+          if (selectedMergedRadioOption) reconstructedRadio.select(selectedMergedRadioOption);
 
           // Rebuild a dropdown's option set, selection, and widget rectangle.
           const sourceDropdownWidget = sourceDropdown.acroField.getWidgets()[0];
