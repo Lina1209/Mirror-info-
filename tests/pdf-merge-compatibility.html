@@ -48,6 +48,7 @@
         const task = window.pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
         const pdf = await task.promise;
         const pages = [];
+        const rotations = [];
         const pageTexts = [];
         let externalLinks = 0;
         let internalLinks = 0;
@@ -59,6 +60,7 @@
           const page = await pdf.getPage(i);
           const viewport = page.getViewport({ scale: 1 });
           pages.push({ width: Math.round(viewport.width), height: Math.round(viewport.height) });
+          rotations.push(page.rotate);
           const textContent = await page.getTextContent();
           pageTexts.push(textContent.items.map(item => item.str).join(' '));
           const annotations = await page.getAnnotations();
@@ -86,7 +88,7 @@
         }
         const metadata = await pdf.getMetadata();
         await pdf.destroy();
-        return { pages, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, title: metadata.info && metadata.info.Title };
+        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, title: metadata.info && metadata.info.Title };
       }
       button.addEventListener('click', async function () {
         lines.length = 0;
@@ -95,6 +97,9 @@
           assert(!!window.jspdf && !!window.PDFLib && !!window.pdfjsLib, 'Pinned test libraries loaded (jsPDF 2.5.2, pdf-lib 1.17.1, PDF.js 3.11.174)');
           const first = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-A', 'Mirror Info batch A'));
           const second = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-B', 'Mirror Info batch B'));
+          // Exercise inherited PDF /Rotate entries in copied pages.
+          first.getPages()[1].setRotation(window.PDFLib.degrees(90));
+          second.getPages()[1].setRotation(window.PDFLib.degrees(270));
           const merged = await window.PDFLib.PDFDocument.create();
           merged.setTitle('Mirror Info merged compatibility test');
           merged.setAuthor('Mirror Info');
@@ -152,6 +157,7 @@
           assert(result.pages[0].width < result.pages[0].height, 'A4 portrait source page geometry is preserved');
           assert(result.pages[1].width > result.pages[1].height && result.pages[3].width > result.pages[3].height, 'Both landscape page geometries are preserved');
           assert(result.pages[2].width < result.pages[2].height, 'Second batch portrait page geometry is preserved');
+          assert(result.rotations[1] === 90 && result.rotations[3] === 270, 'Page rotation entries survive copying and merging');
           assert(result.pageTexts[0].includes('BATCH-A') && result.pageTexts[1].includes('BATCH-A') && result.pageTexts[2].includes('BATCH-B') && result.pageTexts[3].includes('BATCH-B'), 'Text content remains extractable on all four merged pages');
           assert(result.externalLinks >= 2, 'External URI link annotations survive from both batches');
           assert(result.internalLinks >= 2, 'Internal link annotations remain present in the merged output');
@@ -163,6 +169,7 @@
           assert(result.title === 'Mirror Info merged compatibility test', 'Merged PDF metadata can be written and read back');
           report('RESULT: PASS — merged PDF reopened successfully with PDF.js.');
           report('Page geometry: ' + JSON.stringify(result.pages));
+          report('Page rotations: ' + JSON.stringify(result.rotations));
           report('Extracted text by page: ' + JSON.stringify(result.pageTexts));
           report('Link counts: external=' + result.externalLinks + ', internal=' + result.internalLinks + ', resolved=' + result.resolvedInternalLinks + ', broken=' + result.brokenInternalLinks);
           report('Internal targets (zero-based): ' + JSON.stringify(result.internalTargets));
