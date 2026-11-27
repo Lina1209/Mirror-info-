@@ -1882,6 +1882,44 @@
     const sourceArchiveBytes = await file.arrayBuffer();
     verifyEpubMimetypeHeader(sourceArchiveBytes, 'Исходный EPUB');
     const zip = await JSZip.loadAsync(sourceArchiveBytes);
+
+    function validateEpubPackageLimits(packageZip, label) {
+      const names = Object.keys(packageZip.files);
+      const maxEntries = 12000;
+      const maxTotalBytes = 350 * 1024 * 1024;
+      const maxPartBytes = 100 * 1024 * 1024;
+      const maxCompressionRatio = 250;
+      if (names.length > maxEntries) {
+        throw new Error(label + ': слишком много элементов внутри EPUB-архива.');
+      }
+      let totalBytes = 0;
+      for (const name of names) {
+        const entry = packageZip.files[name];
+        if (!entry || entry.dir) continue;
+        const uncompressed = Number(entry._data?.uncompressedSize);
+        const compressed = Number(entry._data?.compressedSize);
+        if (!Number.isFinite(uncompressed) || uncompressed < 0) {
+          throw new Error(label + ': невозможно проверить размер элемента ' + name);
+        }
+        if (uncompressed > maxPartBytes) {
+          throw new Error(label + ': слишком большой элемент EPUB-архива — ' + name);
+        }
+        totalBytes += uncompressed;
+        if (totalBytes > maxTotalBytes) {
+          throw new Error(label + ': распакованный размер EPUB превышает безопасный предел 350 МБ.');
+        }
+        if (
+          uncompressed > 1024 * 1024 &&
+          Number.isFinite(compressed) &&
+          compressed > 0 &&
+          uncompressed / compressed > maxCompressionRatio
+        ) {
+          throw new Error(label + ': обнаружена подозрительная степень сжатия в элементе ' + name);
+        }
+      }
+    }
+
+    validateEpubPackageLimits(zip, 'Исходный EPUB');
     const epubFileNames = Object.keys(zip.files).filter(name => !zip.files[name].dir);
     if (epubFileNames[0] !== 'mimetype') {
       throw new Error('В EPUB файл mimetype должен быть первым элементом архива. Пересоберите EPUB стандартным экспортом книги.');
@@ -2013,6 +2051,7 @@
     const rebuiltArchiveBytes = await blob.arrayBuffer();
     verifyEpubMimetypeHeader(rebuiltArchiveBytes, 'Собранный EPUB');
     const verifiedEpub = await JSZip.loadAsync(rebuiltArchiveBytes);
+    validateEpubPackageLimits(verifiedEpub, 'Собранный EPUB');
     const verifiedNames = Object.keys(verifiedEpub.files).filter(name => !verifiedEpub.files[name].dir);
     if (
       verifiedNames[0] !== 'mimetype' ||
