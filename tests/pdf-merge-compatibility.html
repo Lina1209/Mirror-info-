@@ -175,6 +175,9 @@
         button.disabled = true;
         try {
           assert(!!window.jspdf && !!window.PDFLib && !!window.pdfjsLib, 'Pinned test libraries loaded (jsPDF 2.5.2, pdf-lib 1.17.1, PDF.js 3.11.174)');
+          const PDFName = window.PDFLib.PDFName;
+          const PDFDict = window.PDFLib.PDFDict;
+          const PDFNumber = window.PDFLib.PDFNumber;
           const first = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-A', 'Mirror Info batch A'));
           const second = await window.PDFLib.PDFDocument.load(await makeBatch('BATCH-B', 'Mirror Info batch B'));
           // Exercise inherited PDF /Rotate entries and real source outline trees.
@@ -183,9 +186,6 @@
           createOutlineRoot(first, 'Batch A chapter', 'Batch A section', first.getPages()[0].ref, first.getPages()[1].ref);
           createOutlineRoot(second, 'Batch B chapter', 'Batch B section', second.getPages()[0].ref, second.getPages()[1].ref);
           const merged = await window.PDFLib.PDFDocument.create();
-          const PDFName = window.PDFLib.PDFName;
-          const PDFDict = window.PDFLib.PDFDict;
-          const PDFNumber = window.PDFLib.PDFNumber;
           const outlineRoot = PDFDict.withContext(merged.context);
           outlineRoot.set(PDFName.of('Type'), PDFName.of('Outlines'));
           outlineRoot.set(PDFName.of('Count'), PDFNumber.of(4));
