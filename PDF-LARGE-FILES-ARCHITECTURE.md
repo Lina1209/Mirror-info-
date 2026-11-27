@@ -298,3 +298,10 @@ Chromium Actions run [45981343496](https://github.com/Lina1209/Mirror-info-/acti
 ### Stateful annotation appearance follow-up (2026-11-27)
 
 Chromium Actions run [45981600672](https://github.com/Lina1209/Mirror-info-/actions/runs/45981600672) completed successfully on commit `b205a4a548ee46f50531a7687f902b5e495e1f46`. The synthetic Stamp fixture now exercises a normal appearance dictionary whose `/N` entry is a state dictionary containing `/On` and `/Off` Form XObject streams, with `/AS /On` selecting the active state. Browser assertions confirm both source states exist and that the appearance state and both streams remain present after `copyPages` merge and PDF.js reopen. This proves only this constructed stateful-appearance shape; it does not establish correctness for arbitrary appearance dictionaries, appearance regeneration, interactive behavior in every PDF viewer, or production PDF translation.
+
+
+### Stateful appearance regression rerun (2026-11-27)
+
+GitHub Actions run [45981787739](https://github.com/Lina1209/Mirror-info-/actions/runs/45981787739) completed successfully in Chromium on commit `6217d02298d84b1e2677433510046a819778dfed`. The full compatibility harness passed, including the existing synthetic `/AS /On` state-dictionary fixture and all prior page, link, outline, annotation, and simple reconstructed AcroForm assertions. The run also confirms the known baseline: a plain `copyPages` merge has zero document-level AcroForm fields; the simple field fixtures pass only after the separate reconstruction prototype. The harness still does not establish general real-world PDF compatibility or bounded-memory production merging.
+
+A follow-up regression fixture now adds a second Stamp annotation with `/AS /Off`, alongside the existing `/AS /On` annotation, and asserts that both named appearance streams remain present after merge. Its new Actions run is pending; no result is claimed yet.
