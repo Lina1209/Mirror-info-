@@ -55,3 +55,35 @@ A single in-memory merge of all chunks may recreate the same memory problem. If 
 ## Immediate decision
 
 Do not raise the current 150-page translation limit yet. The safe next implementation step is a prototype of one small page batch plus temporary object storage and a verified merge path. The current repository configuration does not yet provide that infrastructure.
+
+## Implementation contract before enabling batch mode
+
+The browser must never receive Cloudflare account credentials or a long-lived R2 key. A trusted Pages Function/Worker creates a job and issues narrowly scoped, short-lived upload authorization for one expected batch object. D1 stores job metadata only; R2 stores binary batch objects.
+
+Suggested job lifecycle:
+
+1. `POST /api/pdf-jobs` — validate authorization, source size, requested page range, and quota; create a random job ID and expiry.
+2. `POST /api/pdf-jobs/:jobId/batches` — register a batch with its page interval, expected byte limit, and content digest before upload.
+3. Upload the batch to a private R2 key through short-lived authorization or a Worker proxy with strict byte limits. Never accept a caller-supplied R2 key.
+4. `POST /api/pdf-jobs/:jobId/batches/:batchId/complete` — verify object existence, byte size, digest, page interval, and idempotency before marking the batch complete.
+5. `POST /api/pdf-jobs/:jobId/finalize` — accept only a complete, non-overlapping, gap-free set of batches; start merge/verification in a runtime with a measured memory budget.
+6. `GET /api/pdf-jobs/:jobId` — return status and progress, not storage credentials. A final download URL must be short-lived and scoped to the completed output.
+7. `DELETE /api/pdf-jobs/:jobId` — cancel and schedule deletion of every batch and output object.
+
+Required safeguards:
+
+- Bind every job to an authenticated owner or an unguessable, revocable capability; enforce ownership on every endpoint.
+- Enforce maximum source bytes, per-batch bytes, batch count, total stored bytes, concurrent jobs, and job lifetime on the server.
+- Validate page ranges as positive integers; reject overlap, gaps, duplicate completion, and batches from another job.
+- Verify SHA-256 and byte size after upload. Treat browser-provided filenames and MIME types as untrusted.
+- Make completion/finalization idempotent so retrying after a network interruption cannot duplicate pages.
+- Expire abandoned jobs automatically and clean up partial uploads and failed outputs.
+- Do not expose R2 object keys, signed URLs, or capability tokens in logs, D1 errors, or public status responses.
+- Do not mark a job complete until the merged PDF has been reopened and its page count and page geometry have been checked.
+- Keep the browser-only 150-page path unchanged until this server pipeline passes real-file tests.
+
+## Compatibility spike acceptance criteria
+
+Before selecting a merger, build an isolated test with the exact PDF.js/jsPDF versions already used here. Demonstrate that a two-batch document can be merged without losing page dimensions, rotation, external links, internal destinations, and promised metadata. Measure peak memory in the intended Cloudflare runtime. If the merger requires loading all source and output bytes into one large buffer, reject it for the 300–500+ page target and use a dedicated processing runtime instead.
+
+No R2 binding, endpoint, or merge dependency is enabled by this planning note.
