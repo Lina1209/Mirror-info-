@@ -20,6 +20,7 @@
   let selectedFile = null;
   let ocrWorkerPromise = null;
   let ocrWorkerLanguage = '';
+  let lastOcrLanguage = '';
 
   const $ = (id) => document.getElementById(id);
 
@@ -408,6 +409,7 @@
 
     const result = await worker.recognize(source);
     lastOcrLines = (result.data?.lines || []).filter(line => line.text && line.text.trim() && line.bbox);
+    lastOcrLanguage = $('srcLang')?.value || 'auto';
 
     return result.data?.text || '';
   }
@@ -865,6 +867,11 @@
   }
 
   async function translateImageFile(file) {
+    const currentOcrLanguage = $('srcLang')?.value || 'auto';
+    if (lastOcrLanguage !== currentOcrLanguage) {
+      lastOcrLines = [];
+      await ocrImage(file);
+    }
     const lines = lastOcrLines.filter(line => line.text && line.text.trim() && line.bbox);
     if (!lines.length) {
       throw new Error('Не удалось получить координаты текста на изображении. Попробуйте более чёткий JPG или PNG.');
@@ -1024,6 +1031,7 @@
     translatedAssetBlob = null;
     translatedAssetName = '';
     lastOcrLines = [];
+    lastOcrLanguage = '';
     clearTranslatedAssetPreview();
 
     if ($('fileInput')) {
@@ -1132,6 +1140,7 @@
         translatedAssetBlob = null;
         translatedAssetName = '';
         lastOcrLines = [];
+        lastOcrLanguage = '';
         clearTranslatedAssetPreview();
         $('resultWrap')?.classList.add('hidden');
 
