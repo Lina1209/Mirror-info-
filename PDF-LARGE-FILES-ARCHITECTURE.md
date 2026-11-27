@@ -52,6 +52,18 @@ A single in-memory merge of all chunks may recreate the same memory problem. If 
 - Raise limits only from measured results. Keep page count and raster-pixel limits separate.
 - Retain the existing conservative browser-only path as fallback until the batch pipeline is proven.
 
+## PDF merge compatibility spike (test harness added)
+
+An isolated browser harness is available at `tests/pdf-merge-compatibility.html`. It pins the repository's current jsPDF 2.5.2 and PDF.js 3.11.174 versions plus pdf-lib 1.17.1, creates two small independent PDF batches, merges their pages with `PDFDocument.copyPages`, then reopens the result with PDF.js.
+
+The harness checks:
+- four-page output from two two-page inputs;
+- portrait and landscape page geometry;
+- presence of external URI and internal link annotations;
+- merged title metadata and successful PDF.js reopening.
+
+This is a compatibility experiment, not a completed test result: the harness has been committed but has **not** been executed in a real browser in this work session. Annotation presence does not prove that every internal destination resolves to the intended page. Cross-batch links, bookmarks/outlines, forms, signatures, attachments, tagged structure, large-file memory, and Cloudflare Workers compatibility remain unverified. The test page is not loaded by the production app and does not change the PDF translation path.
+
 ## Immediate decision
 
 Do not raise the current 150-page translation limit yet. The safe next implementation step is a prototype of one small page batch plus temporary object storage and a verified merge path. The current repository configuration does not yet provide that infrastructure.
