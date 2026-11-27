@@ -295,9 +295,21 @@
             assert(readRawAnnotationContents(first, first.getPages()[0], subtype).includes('Batch A ' + (subtype === 'Underline' ? 'underline' : subtype === 'StrikeOut' ? 'strikeout' : 'sticky note') + (subtype === 'Text' ? '' : ' note')), 'Source A ' + subtype + ' Contents exists in the raw PDF annotation dictionary');
           }
           const sourceForm = first.getForm();
+          const sourcePage = first.getPages()[0];
           const sampleField = sourceForm.createTextField('batchA.sampleField');
           sampleField.setText('Form value for merge test');
-          sampleField.addToPage(first.getPages()[0], { x: 48, y: 190, width: 220, height: 24 });
+          sampleField.addToPage(sourcePage, { x: 48, y: 190, width: 220, height: 24 });
+          const sourceCheckbox = sourceForm.createCheckBox('batchA.approved');
+          sourceCheckbox.check();
+          sourceCheckbox.addToPage(sourcePage, { x: 300, y: 190, width: 16, height: 16 });
+          const sourceRadio = sourceForm.createRadioGroup('batchA.delivery');
+          sourceRadio.addOptionToPage('express', sourcePage, { x: 300, y: 160, width: 16, height: 16 });
+          sourceRadio.addOptionToPage('standard', sourcePage, { x: 300, y: 138, width: 16, height: 16 });
+          sourceRadio.select('express');
+          const sourceDropdown = sourceForm.createDropdown('batchA.language');
+          sourceDropdown.addOptions(['English', 'French', 'German']);
+          sourceDropdown.select('French');
+          sourceDropdown.addToPage(sourcePage, { x: 300, y: 105, width: 130, height: 22 });
           const merged = await window.PDFLib.PDFDocument.create();
           const mergedDestinationNames = [];
           const outlineRoot = PDFDict.withContext(merged.context);
@@ -462,6 +474,40 @@
           report('Reconstructed AcroForm inventory: ' + JSON.stringify(reconstructedInspection.formFieldInventory));
           assert(reconstructedInspection.formFieldCount === 1, 'Reconstructed text field is present in the merged AcroForm field tree');
           assert(reconstructedInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.sampleField' && field.type === 'text' && field.value === 'Form value for merge test'), 'Reconstructed text field retains its unique namespaced name, text type, and value');
+
+          // Rebuild a checked checkbox using its source state and widget box.
+          const sourceCheckboxWidget = sourceCheckbox.acroField.getWidgets()[0];
+          const checkboxRect = sourceCheckboxWidget.getRectangle();
+          const reconstructedCheckbox = reconstructedForm.createCheckBox('batch-a.batchA.approved');
+          if (sourceCheckbox.isChecked()) reconstructedCheckbox.check();
+          else reconstructedCheckbox.uncheck();
+          reconstructedCheckbox.addToPage(merged.getPage(0), checkboxRect);
+
+          // Rebuild each radio option as a new widget and restore the selected value.
+          const sourceRadioWidgets = sourceRadio.acroField.getWidgets();
+          const reconstructedRadio = reconstructedForm.createRadioGroup('batch-a.batchA.delivery');
+          for (const widget of sourceRadioWidgets) {
+            const onValue = widget.getOnValue();
+            const option = onValue ? onValue.toString().replace(/^\\//, '') : null;
+            if (option) reconstructedRadio.addOptionToPage(option, merged.getPage(0), widget.getRectangle());
+          }
+          const selectedRadio = sourceRadio.getSelected();
+          if (selectedRadio) reconstructedRadio.select(selectedRadio);
+
+          // Rebuild a dropdown's option set, selection, and widget rectangle.
+          const sourceDropdownWidget = sourceDropdown.acroField.getWidgets()[0];
+          const reconstructedDropdown = reconstructedForm.createDropdown('batch-a.batchA.language');
+          reconstructedDropdown.addOptions(sourceDropdown.getOptions());
+          const selectedDropdown = sourceDropdown.getSelected();
+          if (selectedDropdown && selectedDropdown.length) reconstructedDropdown.select(selectedDropdown[0]);
+          reconstructedDropdown.addToPage(merged.getPage(0), sourceDropdownWidget.getRectangle());
+
+          const allFormsOutput = await merged.save({ useObjectStreams: true });
+          const allFormsInspection = await inspect(allFormsOutput);
+          report('Reconstructed all-form inventory: ' + JSON.stringify(allFormsInspection.formFieldInventory));
+          assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.approved' && field.value !== null && field.value !== 'Off'), 'Reconstructed checkbox retains its checked state');
+          assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.delivery' && field.value === 'express'), 'Reconstructed radio group retains its selected option');
+          assert(allFormsInspection.formFieldInventory.some(field => field.name === 'batch-a.batchA.language' && field.value === 'French'), 'Reconstructed dropdown retains its selected option');
           report('Merged annotation inventory: ' + JSON.stringify(result.annotationSummary));
           report('Detected highlight contents: ' + JSON.stringify(result.highlightContents));
           assert(result.annotationSummary.filter(item => item.subtype === 'Highlight').length === 2, 'Both text highlight annotation objects survive the merge');
