@@ -264,3 +264,8 @@ This is a focused synthetic Highlight test. It does not establish preservation o
 ## Popup fixture API correction (run 45980099749)
 
 The first Chromium run for the synthetic Text/Popup relationship check failed before reaching the merge assertions: the fixture called `PDFBool.of(false)`, but pdf-lib 1.17.1 exposes boolean singletons rather than that factory method. This was a test-fixture API error, not evidence that Popup references were lost. The fixture now uses `PDFBool.False` (commit e652cc7). The Popup preservation assertion remains unverified until a fresh browser run completes.
+
+
+## Text annotation Popup relationship (run 45980285069)
+
+The Chromium synthetic merge compatibility run passed after correcting the fixture boolean to `PDFBool.False`. It verified that the source Text annotation and Popup have reciprocal references before merge and that the merged output retains both the Popup annotation and the reciprocal `/Parent` and `/Popup` references. This confirms the tested simple Text/Popup case only; it does not establish compatibility for arbitrary popup geometries, replies, or appearance streams. The fixture uses synthetic PDFs and does not validate real-world documents or production runtime limits.
