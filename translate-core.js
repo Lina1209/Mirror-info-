@@ -311,8 +311,8 @@
       if (target === 'photo') {
         setProgress(35, 'Текст распознан. Нажмите «Перевести документ».');
       }
-      if (sourceKind === 'pdf' || sourceKind === 'jpg' || sourceKind === 'jpeg' || sourceKind === 'png' || sourceKind === 'webp' || sourceKind === 'gif' || sourceKind === 'bmp') {
-        setError('Подсказка: PDF и сканы в браузере переводятся как текст в режиме best effort. Точное сохранение макета без отдельного backend не гарантируется.');
+      if (sourceKind === 'pdf') {
+        setError('Подсказка: PDF пока переводится как извлечённый текст; сохранение исходной PDF-вёрстки будет отдельным этапом.');
       }
     }).catch((error) => {
       hideProgress();
@@ -471,8 +471,11 @@
 
   async function translateImageFile(file) {
     const worker = await getOcrWorker();
-    const result = await worker.recognize(file);
-    const lines = (result.data.lines || []).filter((line) => line.text && line.text.trim() && line.bbox);
+    let lines = lastOcrLines;
+    if (!lines.length) {
+      const result = await worker.recognize(file);
+      lines = (result.data.lines || []).filter((line) => line.text && line.text.trim() && line.bbox);
+    }
     if (!lines.length) throw new Error('OCR распознал текст, но не вернул координаты строк. Попробуйте более чёткое JPG/PNG-изображение.');
     const translatedLines = [];
     for (let index = 0; index < lines.length; index += 1) {
