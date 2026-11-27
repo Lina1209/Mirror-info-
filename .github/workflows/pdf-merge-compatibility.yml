@@ -1,0 +1,48 @@
+name: PDF merge compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'tests/pdf-merge-compatibility.html'
+      - 'tests/run-pdf-merge-compatibility.mjs'
+      - '.github/workflows/pdf-merge-compatibility.yml'
+      - 'PDF-LARGE-FILES-ARCHITECTURE.md'
+  push:
+    branches:
+      - feature/preserve-format-image-translation-main
+    paths:
+      - 'tests/pdf-merge-compatibility.html'
+      - 'tests/run-pdf-merge-compatibility.mjs'
+      - '.github/workflows/pdf-merge-compatibility.yml'
+      - 'PDF-LARGE-FILES-ARCHITECTURE.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chromium test runner
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Serve repository files
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 > /tmp/mirror-http.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/tests/pdf-merge-compatibility.html >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/mirror-http.log
+          exit 1
+      - name: Run PDF merge browser checks
+        run: node tests/run-pdf-merge-compatibility.mjs
