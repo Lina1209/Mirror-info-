@@ -184,9 +184,18 @@
           }
         }
         await collectOutline(outline, null);
+        const namedDestinationTargets = [];
+        for (const destinationName of ['batch-a-chapter-start', 'batch-b-chapter-start']) {
+          try {
+            const destination = await pdf.getDestination(destinationName);
+            if (Array.isArray(destination) && destination[0]) {
+              namedDestinationTargets.push({ name: destinationName, targetPageIndex: await pdf.getPageIndex(destination[0]) });
+            }
+          } catch (_) {}
+        }
         const metadata = await pdf.getMetadata();
         await pdf.destroy();
-        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, outlineTargets, title: metadata.info && metadata.info.Title };
+        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, outlineTargets, namedDestinationTargets, title: metadata.info && metadata.info.Title };
       }
       button.addEventListener('click', async function () {
         lines.length = 0;
@@ -338,6 +347,9 @@
           assert(targetBySource.get(0) === 1 && targetBySource.get(2) === 3, 'Internal links point to the correct page within each merged batch (page 2 and page 4)');
           assert(result.externalUrls.includes('https://example.com/batch-a') && result.externalUrls.includes('https://example.com/batch-b'), 'Both batch external link targets are retained');
           assert(result.title === 'Mirror Info merged compatibility test', 'Merged PDF metadata can be written and read back');
+          const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
+          assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
+          assert(namedTargets.get('batch-b-chapter-start') === 2, 'Batch B named destination resolves to merged page 3');
           const outlineByTitle = new Map(result.outlineTargets.map(item => [item.title, item]));
           assert(result.outlineTargets.length === 4, 'Both batches contribute parent and child PDF outline entries');
           assert(outlineByTitle.get('Batch A chapter')?.targetPageIndex === 0 && outlineByTitle.get('Batch A section')?.targetPageIndex === 1, 'Batch A outline destinations map to merged pages 1 and 2');
@@ -345,6 +357,7 @@
           assert(result.outlineTargets.filter(item => item.parentTitle).length === 2, 'Nested PDF outline hierarchy survives merge');
           report('RESULT: PASS — merged PDF reopened successfully with PDF.js.');
           report('PDF outline targets: ' + JSON.stringify(result.outlineTargets));
+          report('Named destination targets: ' + JSON.stringify(result.namedDestinationTargets));
           report('Page geometry: ' + JSON.stringify(result.pages));
           report('Page rotations: ' + JSON.stringify(result.rotations));
           report('Extracted text by page: ' + JSON.stringify(result.pageTexts));
