@@ -123,6 +123,20 @@
     return window.pdfjsLib;
   }
 
+
+  async function ensureJsPdf() {
+    await loadScript(
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js',
+      () => !!window.jspdf?.jsPDF
+    );
+
+    if (!window.jspdf?.jsPDF) {
+      throw new Error('Компонент сборки PDF не загрузился.');
+    }
+
+    return window.jspdf.jsPDF;
+  }
+
   async function ensureMammoth() {
     await loadScript(
       'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js',
@@ -794,6 +808,138 @@
     return new XMLSerializer().serializeToString(doc);
   }
 
+
+  async function translatePdfPackage(file) {
+    if (file.size > 50 * 1024 * 1024) {
+      throw new Error('Для сборки PDF с сохранением страниц пока поддерживаются файлы до 50 МБ.');
+    }
+
+    const pdfjs = await ensurePdfJs();
+    const JsPDF = await ensureJsPdf();
+    const sourcePdf = await pdfjs.getDocument({
+      data: await file.arrayBuffer(),
+      isEvalSupported: false
+    }).promise;
+
+    if (sourcePdf.numPages > 100) {
+      throw new Error('В этом режиме PDF поддерживает до 100 страниц за один проход. Разделите большой документ на части.');
+    }
+
+    let outputPdf = null;
+    const previewParts = [];
+
+    try {
+      for (let pageNumber = 1; pageNumber <= sourcePdf.numPages; pageNumber += 1) {
+        progress(
+          5 + (pageNumber - 1) / sourcePdf.numPages * 85,
+          'Сохраняем страницу PDF ' + pageNumber + ' из ' + sourcePdf.numPages + '…'
+        );
+
+        const page = await sourcePdf.getPage(pageNumber);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const scale = Math.min(
+          1.5,
+          Math.sqrt(16000000 / Math.max(1, baseViewport.width * baseViewport.height))
+        );
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) {
+          throw new Error('Не удалось подготовить страницу PDF для обработки.');
+        }
+
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: context, viewport }).promise;
+
+        const pageText = await ocrImage(canvas);
+        const lines = lastOcrLines.slice();
+        const translatedLines = [];
+
+        for (let index = 0; index < lines.length; index += 1) {
+          const translated = await translateInParts(lines[index].text.trim());
+          translatedLines.push(translated);
+          previewParts.push(translated);
+        }
+
+        lines.forEach((line, index) => {
+          const box = line.bbox;
+          const x = Math.max(0, Math.floor(box.x0));
+          const y = Math.max(0, Math.floor(box.y0));
+          const width = Math.max(1, Math.min(canvas.width - x, Math.ceil(box.x1 - box.x0)));
+          const height = Math.max(1, Math.min(canvas.height - y, Math.ceil(box.y1 - box.y0)));
+          if (x >= canvas.width || y >= canvas.height) return;
+
+          context.fillStyle = sampleBackgroundColor(context, box, canvas.width, canvas.height);
+          context.fillRect(Math.max(0, x - 2), Math.max(0, y - 1), width + 4, height + 2);
+
+          let fontSize = Math.max(7, Math.min(30, height * 0.78));
+          context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+          context.textAlign = 'left';
+          context.textBaseline = 'middle';
+
+          while (
+            fontSize > 6 &&
+            context.measureText(translatedLines[index]).width > width + 2
+          ) {
+            fontSize -= 1;
+            context.font = '600 ' + fontSize + 'px Arial, sans-serif';
+          }
+
+          context.fillStyle = '#202020';
+          context.fillText(
+            translatedLines[index],
+            x,
+            y + height / 2,
+            Math.max(1, width)
+          );
+        });
+
+        const pageWidth = viewport.width / scale;
+        const pageHeight = viewport.height / scale;
+        const orientation = pageWidth > pageHeight ? 'landscape' : 'portrait';
+        const pageImage = canvas.toDataURL('image/jpeg', 0.92);
+
+        if (!outputPdf) {
+          outputPdf = new JsPDF({
+            orientation,
+            unit: 'pt',
+            format: [pageWidth, pageHeight],
+            compress: true
+          });
+        } else {
+          outputPdf.addPage([pageWidth, pageHeight], orientation);
+        }
+
+        outputPdf.addImage(pageImage, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+
+        canvas.width = 0;
+        canvas.height = 0;
+        await page.cleanup();
+
+        progress(
+          5 + pageNumber / sourcePdf.numPages * 85,
+          'Обработано страниц PDF: ' + pageNumber + ' из ' + sourcePdf.numPages
+        );
+      }
+
+      if (!outputPdf) {
+        throw new Error('PDF не содержит страниц для сборки.');
+      }
+
+      const blob = outputPdf.output('blob');
+      return {
+        blob,
+        text: previewParts.join('\n\n') || 'Текст на страницах PDF не распознан.'
+      };
+    } finally {
+      await sourcePdf.destroy();
+    }
+  }
+
   async function translateDocxPackage(file) {
     const JSZip = await ensureJSZip();
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
@@ -1060,7 +1206,7 @@
           'Готовое изображение можно скачать. Исходная картинка сохранена; фон под распознанным текстом восстанавливается приближённо — проверьте результат.';
       } else if (ext === 'pdf') {
         $('resultNote').textContent =
-          'PDF пока переводится как текст. Сохранение исходной PDF-вёрстки и редактируемого текстового слоя ещё требует отдельной реализации.';
+          'Страницы, размер и иллюстрации PDF сохраняются как изображения высокого разрешения. Текстовый слой в новом PDF пока не редактируется; фон под текстом восстанавливается приближённо.';
       } else {
         $('resultNote').textContent =
           'Результат можно скопировать или скачать как TXT. Сохранение исходного оформления для этого формата ещё не подключено.';
@@ -1361,6 +1507,11 @@
               result = packaged.text;
               asset = packaged.blob;
               setTranslatedAsset(asset, selectedFile, 'fb2');
+            } else if (selectedFile && ext === 'pdf') {
+              const packaged = await translatePdfPackage(selectedFile);
+              result = packaged.text;
+              asset = packaged.blob;
+              setTranslatedAsset(asset, selectedFile, 'pdf');
             } else if (selectedFile && ['jpg', 'jpeg', 'png'].includes(ext)) {
               const translatedImage = await translateImageFile(selectedFile);
               result = translatedImage.text;
