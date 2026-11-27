@@ -155,6 +155,7 @@
         let externalLinks = 0;
         let internalLinks = 0;
         const highlightContents = [];
+        const annotationSummary = [];
         let resolvedInternalLinks = 0;
         let brokenInternalLinks = 0;
         const externalUrls = [];
@@ -168,6 +169,7 @@
           pageTexts.push(textContent.items.map(item => item.str).join(' '));
           const annotations = await page.getAnnotations();
           for (const annotation of annotations) {
+            annotationSummary.push({ pageIndex: i - 1, subtype: annotation.subtype || null, contents: annotation.contents || '', annotationType: annotation.annotationType || null });
             if (annotation.subtype === 'Highlight') highlightContents.push(annotation.contents || '');
             if (typeof annotation.url === 'string' && annotation.url.startsWith('https://')) {
               externalLinks += 1;
@@ -220,7 +222,7 @@
         }
         const metadata = await pdf.getMetadata();
         await pdf.destroy();
-        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, outlineTargets, namedDestinationTargets, formFieldCount, highlightContents, title: metadata.info && metadata.info.Title };
+        return { pages, rotations, pageTexts, externalLinks, externalUrls, internalLinks, internalTargets, resolvedInternalLinks, brokenInternalLinks, outlineTargets, namedDestinationTargets, formFieldCount, highlightContents, annotationSummary, title: metadata.info && metadata.info.Title };
       }
       button.addEventListener('click', async function () {
         lines.length = 0;
@@ -380,6 +382,8 @@
           assert(result.title === 'Mirror Info merged compatibility test', 'Merged PDF metadata can be written and read back');
           report('AcroForm field count after copyPages merge: ' + result.formFieldCount);
           assert(result.formFieldCount === 0, 'Known limitation is explicit: copyPages does not preserve the document-level AcroForm field tree');
+          report('Merged annotation inventory: ' + JSON.stringify(result.annotationSummary));
+          report('Detected highlight contents: ' + JSON.stringify(result.highlightContents));
           assert(result.highlightContents.length === 2 && result.highlightContents.includes('Batch A preserved highlight') && result.highlightContents.includes('Batch B preserved highlight'), 'Text highlight annotations from both source batches survive the merge');
           const namedTargets = new Map(result.namedDestinationTargets.map(item => [item.name, item.targetPageIndex]));
           assert(namedTargets.get('batch-a-chapter-start') === 0, 'Batch A named destination resolves to merged page 1');
