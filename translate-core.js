@@ -1110,6 +1110,7 @@
     };
     const expectedPageGeometry = [];
     let copiedLinkAnnotationCount = 0;
+    let sourceLinkAnnotationCount = 0;
     let copiedOutlineItemCount = 0;
     let expectedTextLayerCharacters = 0;
     let expectedPdfMetadata = null;
@@ -1329,6 +1330,9 @@
             if (Array.isArray(annotations)) {
               nonLinkAnnotationCount += annotations.filter(annotation =>
                 annotation?.subtype && annotation.subtype !== 'Link'
+              ).length;
+              sourceLinkAnnotationCount += annotations.filter(annotation =>
+                annotation?.subtype === 'Link'
               ).length;
             }
             if (typeof outputPdf.link === 'function') {
@@ -1629,6 +1633,13 @@
       if (annotationInspectionFailed) {
         pdfPreservationWarnings.push(
           'Не удалось полностью проверить аннотации PDF. Некоторые ссылки или интерактивные элементы могли не попасть в переведённый файл.'
+        );
+      }
+      if (sourceLinkAnnotationCount > copiedLinkAnnotationCount) {
+        pdfPreservationWarnings.push(
+          'Не все ссылки исходного PDF удалось перенести (' +
+          (sourceLinkAnnotationCount - copiedLinkAnnotationCount) + ' из ' +
+          sourceLinkAnnotationCount + '). Проверьте переходы в готовом файле.'
         );
       }
       if (nonLinkAnnotationCount > 0) {
