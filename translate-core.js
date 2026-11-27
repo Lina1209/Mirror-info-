@@ -22,6 +22,7 @@
   let ocrWorkerLanguage = '';
   let lastOcrLanguage = '';
   let pdfUnicodeFontPromise = null;
+  let lastPdfTextLayerStatus = 'not-started';
 
   const $ = (id) => document.getElementById(id);
 
@@ -921,7 +922,22 @@
 
     const pdfjs = await ensurePdfJs();
     const JsPDF = await ensureJsPdf();
-    const unicodeFontData = await loadPdfUnicodeFont();
+    const targetLanguage = $('tgtLang')?.value || 'ru';
+    const supportsCurrentFont = [
+      'en', 'ru', 'kk', 'uk', 'de', 'fr', 'es', 'it', 'tr'
+    ].includes(targetLanguage);
+    let unicodeFontData = null;
+    lastPdfTextLayerStatus = 'unsupported-language';
+
+    if (supportsCurrentFont) {
+      try {
+        unicodeFontData = await loadPdfUnicodeFont();
+        lastPdfTextLayerStatus = 'enabled';
+      } catch (_) {
+        lastPdfTextLayerStatus = 'font-unavailable';
+      }
+    }
+
     const sourcePdf = await pdfjs.getDocument({
       data: await file.arrayBuffer(),
       isEvalSupported: false
@@ -1073,10 +1089,12 @@
             'FAST'
           );
 
-          registerPdfUnicodeFont(outputPdf, unicodeFontData);
+          if (unicodeFontData) {
+            registerPdfUnicodeFont(outputPdf, unicodeFontData);
+          }
           const pointScaleX = pageWidth / canvas.width;
           const pointScaleY = pageHeight / canvas.height;
-          textOverlay.forEach(item => {
+          if (unicodeFontData) textOverlay.forEach(item => {
             if (!item.text || !item.text.trim()) return;
 
             const maxWidth = Math.max(1, item.width * pointScaleX);
@@ -1463,8 +1481,15 @@
         $('resultNote').textContent =
           'Готовое изображение можно скачать. Исходная картинка сохранена; фон под распознанным текстом восстанавливается приближённо — проверьте результат.';
       } else if (ext === 'pdf') {
+        const textLayerNote = lastPdfTextLayerStatus === 'enabled'
+          ? 'Добавлен невидимый текстовый слой для поиска и копирования перевода.'
+          : lastPdfTextLayerStatus === 'unsupported-language'
+            ? 'Для выбранного языка пока нет подходящего встроенного шрифта, поэтому невидимый текстовый слой не добавлен.'
+            : 'Не удалось загрузить шрифт текстового слоя; видимый PDF всё равно собран.';
         $('resultNote').textContent =
-          'Страницы и иллюстрации сохраняются как изображения; поверх добавляется невидимый текстовый слой для поиска и копирования перевода. Само оформление PDF не редактируется, а фон под распознанным текстом восстанавливается приближённо. Проверьте результат в PDF-просмотрщике.';
+          'Страницы и иллюстрации сохраняются как изображения. ' +
+          textLayerNote +
+          ' Само оформление PDF не редактируется, а фон под распознанным текстом восстанавливается приближённо. Проверьте результат в PDF-просмотрщике.';
       } else {
         $('resultNote').textContent =
           'Результат можно скопировать или скачать как TXT. Сохранение исходного оформления для этого формата ещё не подключено.';
